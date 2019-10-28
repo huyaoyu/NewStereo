@@ -63,8 +63,6 @@ class TrainTestBase(object):
         self.dlCropTrain    = (0, 0) # (0, 0) for disable.
         self.dlCropTest     = (0, 0) # (0, 0) for disable.
 
-        self.dlWinCropSize  = (256, 256) # This is for tesing NewStereo, (h, w)
-
         self.model     = None
         self.flagCPU   = False
         self.multiGPUs = False
@@ -188,13 +186,6 @@ class TrainTestBase(object):
         self.dlCropTrain  = cropTrain
         self.dlCropTest   = cropTest
 
-    def set_window_crop_size(self, cropSize):
-        """
-        cropSize is a two-element list or tuple. (h, w)
-        """
-
-        self.dlWinCropSize = cropSize
-
     def set_read_model(self, readModelString):
         self.check_frame()
         
@@ -304,15 +295,18 @@ class TrainTestBase(object):
 
             preprocessor = transforms.Compose( [ \
                 PreProcess.GrayscaleNoTensor(), \
-                PreProcess.RandomCropSized_OCV( self.dlWinCropSize[0], self.dlWinCropSize[1] ), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
         else:
             raise Exception("No pre-processor is specified.")
 
+        preprocessorDisp = transforms.Compose([transforms.ToTensor()])
+
         if ( False == self.flagInfer ):
-            self.datasetTrain = DA.myImageFolder( imgTrainL, imgTrainR, dispTrain, True, preprocessor=preprocessor, cropSize=self.dlCropTrain )
-            self.datasetTest  = DA.myImageFolder( imgTestL,  imgTestR,  dispTest, False, preprocessor=preprocessor, cropSize=self.dlCropTest )
+            self.datasetTrain = DA.myImageFolder( imgTrainL, imgTrainR, dispTrain, True, \
+                preprocessorImg=preprocessor, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTrain, gNoiseWidth=0 )
+            self.datasetTest  = DA.myImageFolder( imgTestL,  imgTestR,  dispTest, False, \
+                preprocessorImg=preprocessor, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTest, gNoiseWidth=0 )
 
             self.imgTrainLoader = torch.utils.data.DataLoader( \
                 self.datasetTrain, \
@@ -332,11 +326,12 @@ class TrainTestBase(object):
         raise Exception("init_model() virtual interface.")
 
     def post_init_model(self):
-        if ( not self.flagCPU ):
-            if ( True == self.multiGPUs ):
-                self.model = nn.DataParallel(self.model)
+        # if ( not self.flagCPU ):
+        #     if ( True == self.multiGPUs ):
+        #         self.model = nn.DataParallel(self.model)
 
-            self.model.cuda()
+        #     self.model.cuda()
+        self.frame.logger.warning("post_init_model() has no effect for dummy test.")
     
     def init_optimizer(self):
         raise Exception("init_optimizer() virtual interface.")
