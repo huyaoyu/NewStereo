@@ -15,16 +15,17 @@ import torch.utils.data as data
 import torch
 import torchvision.transforms as transforms
 
-from . import IO
-from .. import PreProcess
-from .. import TorchTensorUtils
+if ( __name__ == "__main__" ):
+    import sys
 
-# import sys
-
-# sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/NormalizedGenerator/DataLoader")
-# import IO
-# import PreProcess
-# import TorchTensorUtils
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/NormalizedGenerator/DataLoader")
+    import IO
+    import PreProcess
+    import TorchTensorUtils
+else:
+    from . import IO
+    from .. import PreProcess
+    from .. import TorchTensorUtils
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
