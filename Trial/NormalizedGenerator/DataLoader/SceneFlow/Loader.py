@@ -182,7 +182,7 @@ class myImageFolder(data.Dataset):
         aw = aw + 1
 
         ch = int( ah / 2 )
-        cw = int( cw / 2 )
+        cw = int( aw / 2 )
 
         return img0[ch:ch+self.cropSize[0], cw:cw+self.cropSize[1]], \
                img1[ch:ch+self.cropSize[0], cw:cw+self.cropSize[1]], \
@@ -259,6 +259,9 @@ class myImageFolder(data.Dataset):
             dispLH = self.add_disparity_noise(dispLH)
             dispLH, nm, ns = self.self_normalize(dispLH)
             dispL = self.ref_normalize(dispL, nm, ns)
+
+            # Downsampled version of imgL.
+            imgLH = cv2.pyrDown(imgL, dstsize=(dispLH.shape[1], dispLH.shape[0]))
         else:
             # cv2 compatible crop.
             imgL, imgR, dispL = \
@@ -271,17 +274,21 @@ class myImageFolder(data.Dataset):
             dispLH, nm, ns = self.self_normalize(dispLH)
             dispL = self.ref_normalize(dispL, nm, ns)
 
+            # Downsampled version of imgL.
+            imgLH = cv2.pyrDown(imgL, dstsize=(dispLH.shape[1], dispLH.shape[0]))
+
         # Image pre-processing.
         if ( self.preprocessorImg is not None ):
-            imgL = self.preprocessorImg(imgL)
-            imgR = self.preprocessorImg(imgR)
+            imgL  = self.preprocessorImg(imgL)
+            imgR  = self.preprocessorImg(imgR)
+            imgLH = self.preprocessorImg(imgLH)
         
         # Disparity pre-processing.
         if ( self.preprocessorDisp is not None ):
             dispL  = self.preprocessorDisp(dispL)
             dispLH = self.preprocessorDisp(dispLH)
 
-        return imgL, imgR, dispL, dispLH
+        return imgL, imgR, dispL, dispLH, imgLH
 
     def __len__(self):
         return len(self.left)

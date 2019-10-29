@@ -13,6 +13,7 @@ import torch.optim as optim
 from workflow import WorkFlow, TorchFlow
 
 from TTBase import TrainTestBase
+from Model.NormalizedGenerator import NormalizedGenerator, NormalizedGeneratorParams
 
 from CommonPython.PointCloud.PLYHelper import write_PLY
 
@@ -76,7 +77,8 @@ class TrainTestNG(TrainTestBase):
     # Overload parent's function.
     def init_model(self):
         
-        # self.model = 
+        self.params = NormalizedGeneratorParams()
+        self.model = NormalizedGenerator(self.params)
 
         # Check if we have to read the model from filesystem.
         if ( "" != self.readModelString ):
@@ -90,8 +92,8 @@ class TrainTestNG(TrainTestBase):
         if ( self.flagCPU ):
             self.model.set_cpu_mode()
 
-        # self.frame.logger.info("NG has %d model parameters." % \
-        #     ( sum( [ p.data.nelement() for p in self.model.parameters() ] ) ) )
+        self.frame.logger.info("NG has %d model parameters." % \
+            ( sum( [ p.data.nelement() for p in self.model.parameters() ] ) ) )
     
     # def post_init_model(self):
     #     raise Exception("Not implemented.")
@@ -99,38 +101,42 @@ class TrainTestNG(TrainTestBase):
     # Overload parent's function.
     def init_optimizer(self):
         # self.optimizer = optim.Adam( self.model.parameters(), lr=0.001, betas=(0.9, 0.999) )
-        # self.optimizer = optim.Adam( self.model.parameters(), lr=self.learningRate )
-        self.frame.logger.warning("init_optimizer() has no effect for dummy test.")
+        self.optimizer = optim.Adam( self.model.parameters(), lr=self.learningRate )
 
     # Overload parent's function.
-    def train(self, imgL, imgR, dispL, dispLH, epochCount):
+    def train(self, imgL, imgR, dispL, dispLH, imgLH, epochCount):
         self.check_frame()
 
         if ( True == self.flagInfer ):
             raise Exception("Could not train with infer mode.")
 
-        # self.model.train()
+        self.model.train()
         imgL   = Variable( torch.FloatTensor(imgL) )
         imgR   = Variable( torch.FloatTensor(imgR) )
         dispL  = Variable( torch.FloatTensor(dispL) )
         dispLH = Variable( torch.FloatTensor(dispLH) )
+        imgLH  = Variable( torch.FloatTensor(imgLH) )
 
         if ( not self.flagCPU ):
             imgL   = imgL.cuda()
             imgR   = imgR.cuda()
             dispL  = dispL.cuda()
             dispLH = dispLH.cuda()
+            imgLH  = imgLH.cuda()
 
-        # self.optimizer.zero_grad()
+        self.optimizer.zero_grad()
 
-        # loss = F.smooth_l1_loss()
+        # Forward.
+        pred0, pred1 = self.model(dispLH, imgLH, imgL)
 
-        # loss.backward()
+        loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" ) + \
+               F.smooth_l1_loss( pred1, dispL, reduction="mean" )
 
-        # self.optimizer.step()
+        loss.backward()
 
-        # self.frame.AV["loss"].push_back( loss.item() )
-        self.frame.AV["loss"].push_back( self.countTrain )
+        self.optimizer.step()
+
+        self.frame.AV["loss"].push_back( loss.item() )
 
         self.countTrain += 1
 
@@ -150,26 +156,99 @@ class TrainTestNG(TrainTestBase):
 
         self.frame.logger.info("E%d, L%d: %s" % (epochCount, self.countTrain, self.frame.get_log_str()))
 
+    def draw_test_results(self, identifier, predD, trueD, dispLH, imgL):
+        """
+        Draw test results.
+
+        predD: Dimension (B, 1, H, W)
+        trueD: Dimension (B, 1, H, W)
+        dispLH: Dimension (B, 1, H, W).
+        imgL: Dimension (B, C, H, W).
+        """
+
+        batchSize = predD.size()[0]
+        
+        for i in range(batchSize):
+            outDisp = predD[i, 0, :, :].detach().cpu().numpy()
+            gdtDisp = trueD[i, 0, :, :].detach().cpu().numpy()
+            lhDisp  = dispLH[i, 0, :, :].detach().cpu().numpy()
+            # import ipdb; ipdb.set_trace()
+
+            # gdtMin = gdtDisp.min()
+            # gdtMax = gdtDisp.max()
+
+            # # outDisp = outDisp - outDisp.min()
+            # outDisp = outDisp - gdtMin
+            # gdtDisp = gdtDisp - gdtMin
+
+            # # outDisp = outDisp / outDisp.max()
+            # outDisp = np.clip( outDisp / gdtMax, 0.0, 1.0 )
+            # gdtDisp = gdtDisp / gdtMax
+
+            # Create a matplotlib figure.
+            fig = plt.figure(figsize=(12.8, 9.6), dpi=300)
+
+            ax = plt.subplot(2, 2, 1)
+            plt.tight_layout()
+            ax.set_title("Ref")
+            ax.axis("off")
+            img0 = imgL[i, :, :, :].permute((1,2,0)).cpu().numpy()
+            img0 = img0 - img0.min()
+            img0 = img0 / img0.max()
+            if ( 1 == img0.shape[2] ):
+                img0 = img0[:, :, 0]
+            plt.imshow( img0 )
+
+            ax = plt.subplot(2, 2, 2)
+            plt.tight_layout()
+            ax.set_title("Ground truth")
+            ax.axis("off")
+            plt.imshow( gdtDisp )
+
+            ax = plt.subplot(2, 2, 3)
+            plt.tight_layout()
+            ax.set_title("dispLH")
+            ax.axis("off")
+            plt.imshow( lhDisp )
+
+            ax = plt.subplot(2, 2, 4)
+            plt.tight_layout()
+            ax.set_title("Prediction")
+            ax.axis("off")
+            plt.imshow( outDisp )
+
+            figName = "%s_%02d" % (identifier, i)
+            figName = self.frame.compose_file_name(figName, "png", subFolder=self.testResultSubfolder)
+            plt.savefig(figName)
+
+            plt.close(fig)
+
     # Overload parent's function.
-    def test(self, imgL, imgR, dispL, dispLH, epochCount):
+    def test(self, imgL, imgR, dispL, dispLH, imgLH, epochCount):
         self.check_frame()
 
         if ( True == self.flagInfer ):
             raise Exception("Could not test in the infer mode.")
 
-        # self.model.eval()
-        imgL = Variable( torch.FloatTensor( imgL ) )
-        imgR = Variable( torch.FloatTensor( imgR ) )
+        self.model.eval()
+        imgL   = Variable( torch.FloatTensor(imgL) )
+        imgR   = Variable( torch.FloatTensor(imgR) )
+        dispL  = Variable( torch.FloatTensor(dispL) )
+        dispLH = Variable( torch.FloatTensor(dispLH) )
+        imgLH  = Variable( torch.FloatTensor(imgLH) )
 
         if ( not self.flagCPU ):
-            imgL = imgL.cuda()
-            imgR = imgR.cuda()
+            imgL   = imgL.cuda()
+            imgR   = imgR.cuda()
+            dispL  = dispL.cuda()
+            dispLH = dispLH.cuda()
+            imgLH  = imgLH.cuda()
 
         with torch.no_grad():
             # Forward.
-            pass
+            pred0, pred1 = self.model( dispLH, imgLH, imgL )
 
-        # loss
+        loss = torch.mean( torch.abs( pred1 - dispL ) )
 
         self.countTest += 1
 
@@ -178,10 +257,13 @@ class TrainTestNG(TrainTestBase):
         else:
             count = self.countTrain
 
+        # Draw and save results.
+        identifier = "test_%d" % (count - 1)
+        self.draw_test_results( identifier, pred1, dispL, dispLH, imgL )
+
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):
-            # self.frame.AV["lossTest"].push_back(loss.item(), self.countTest)
-            self.frame.AV["lossTest"].push_back(count, self.countTest)
+            self.frame.AV["lossTest"].push_back(loss.item(), self.countTest)
         else:
             self.frame.logger.info("Could not find \"lossTest\"")
 
@@ -212,7 +294,7 @@ class TrainTestNG(TrainTestBase):
     def finalize(self):
         self.check_frame()
 
-        # # Save the model.
-        # if ( False == self.flagTest and False == self.flagInfer ):
-        #     self.frame.save_model( self.model, "NG" )
-        self.frame.logger.warning("Model not saved for dummy test.")
+        # Save the model.
+        if ( False == self.flagTest and False == self.flagInfer ):
+            self.frame.save_model( self.model, "NG" )
+        # self.frame.logger.warning("Model not saved for dummy test.")

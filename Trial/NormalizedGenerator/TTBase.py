@@ -326,12 +326,11 @@ class TrainTestBase(object):
         raise Exception("init_model() virtual interface.")
 
     def post_init_model(self):
-        # if ( not self.flagCPU ):
-        #     if ( True == self.multiGPUs ):
-        #         self.model = nn.DataParallel(self.model)
+        if ( not self.flagCPU ):
+            if ( True == self.multiGPUs ):
+                self.model = nn.DataParallel(self.model)
 
-        #     self.model.cuda()
-        self.frame.logger.warning("post_init_model() has no effect for dummy test.")
+            self.model.cuda()
     
     def init_optimizer(self):
         raise Exception("init_optimizer() virtual interface.")
