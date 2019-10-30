@@ -279,8 +279,8 @@ class TrainTestNG(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        # self.draw_test_results( identifier, pred1, dispL, dispLH, imgL )
-        self.draw_test_results( identifier, pred0, dispL, pred0, imgL )
+        self.draw_test_results( identifier, pred0, dispL, dispLH, imgL )
+        # self.draw_test_results( identifier, pred0, dispL, pred0, imgL )
         self.save_test_disp( identifier, pred0 )
 
         # Test the existance of an AccumulatedValue object.
