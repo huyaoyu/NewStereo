@@ -11,7 +11,8 @@ python Run_NG.py --working-dir ./WD/Debug \
     --data-root-dir /home/yaoyu/expansion/StereoData/SceneFlowSample/FlyingThings3D \
     --data-file-list \
     --train-epochs 1000 \
-    --test-loops 100 \
+    --test-loops 10 \
     --lr 0.01
+    # --read-model NG.pkl
 
 echo "Done with Run_NG.sh"

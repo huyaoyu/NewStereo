@@ -158,6 +158,9 @@ if __name__ == "__main__":
                 wf.logger.info("Begin training.")
                 print_delimeter(title = "Training loops.")
 
+                testImgL, testImgR, testDispL, testDispLH, testImgLH = next( iterTestData )
+                wf.test( testImgL, testImgR, testDispL, testDispLH, testImgLH, 0 )
+
                 for i in range(args.train_epochs):
                     for batchIdx, ( imgL, imgR, dispL, dispLH, imgLH ) in enumerate( tt.imgTrainLoader ):
                         

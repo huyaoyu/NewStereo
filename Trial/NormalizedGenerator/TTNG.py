@@ -18,10 +18,12 @@ from Model.NormalizedGenerator import NormalizedGenerator, NormalizedGeneratorPa
 from CommonPython.PointCloud.PLYHelper import write_PLY
 
 import matplotlib.pyplot as plt
-if ( not ( "DISPLAY" in os.environ ) ):
-    plt.switch_backend('agg')
-    print("TTNG: Environment variable DISPLAY is not present in the system.")
-    print("TTNG: Switch the backend of matplotlib to agg.")
+# if ( not ( "DISPLAY" in os.environ ) ):
+#     plt.switch_backend('agg')
+#     print("TTNG: Environment variable DISPLAY is not present in the system.")
+#     print("TTNG: Switch the backend of matplotlib to agg.")
+plt.switch_backend('agg')
+print("TTNG: Switch the backend of matplotlib to agg.")
 
 Q_FLIP = np.array( [ \
     [ 1.0,  0.0,  0.0, 0.0 ], \
@@ -127,10 +129,12 @@ class TrainTestNG(TrainTestBase):
         self.optimizer.zero_grad()
 
         # Forward.
-        pred0, pred1 = self.model(dispLH, imgLH, imgL)
+        pred0 = self.model(dispLH, imgLH, imgL)
 
-        loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" ) + \
-               F.smooth_l1_loss( pred1, dispL, reduction="mean" )
+        loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" )
+        # loss = F.l1_loss( pred0, dispL, reduction="mean" )
+        # loss = F.mse_loss( pred0, dispL ) + \
+        #        F.mse_loss( pred1, dispL )
 
         loss.backward()
 
@@ -174,16 +178,18 @@ class TrainTestNG(TrainTestBase):
             lhDisp  = dispLH[i, 0, :, :].detach().cpu().numpy()
             # import ipdb; ipdb.set_trace()
 
-            # gdtMin = gdtDisp.min()
-            # gdtMax = gdtDisp.max()
+            gdtMin = gdtDisp.min()
+            gdtMax = gdtDisp.max()
 
-            # # outDisp = outDisp - outDisp.min()
-            # outDisp = outDisp - gdtMin
-            # gdtDisp = gdtDisp - gdtMin
+            # outDisp = outDisp - outDisp.min()
+            outDisp = outDisp - gdtMin
+            gdtDisp = gdtDisp - gdtMin
+            lhDisp  = lhDisp  - gdtMin
 
-            # # outDisp = outDisp / outDisp.max()
-            # outDisp = np.clip( outDisp / gdtMax, 0.0, 1.0 )
-            # gdtDisp = gdtDisp / gdtMax
+            # outDisp = outDisp / outDisp.max()
+            outDisp = np.clip( outDisp / gdtMax, 0.0, 1.0 )
+            lhDisp  = np.clip( lhDisp / gdtMax, 0.0, 1.0 )
+            gdtDisp = gdtDisp / gdtMax
 
             # Create a matplotlib figure.
             fig = plt.figure(figsize=(12.8, 9.6), dpi=300)
@@ -223,6 +229,18 @@ class TrainTestNG(TrainTestBase):
 
             plt.close(fig)
 
+    def save_test_disp(self, identifier, pred):
+        batchSize = pred.size()[0]
+        
+        for i in range(batchSize):
+            # Get the prediction.
+            disp = pred[i, 0, :, :].cpu().numpy()
+
+            fn = "%s_%02d" % (identifier, i)
+            fn = self.frame.compose_file_name(fn, "dat", subFolder=self.testResultSubfolder)
+
+            np.savetxt( fn, disp, fmt="%+.6f" )
+
     # Overload parent's function.
     def test(self, imgL, imgR, dispL, dispLH, imgLH, epochCount):
         self.check_frame()
@@ -244,11 +262,13 @@ class TrainTestNG(TrainTestBase):
             dispLH = dispLH.cuda()
             imgLH  = imgLH.cuda()
 
+        # import ipdb; ipdb.set_trace()
+
         with torch.no_grad():
             # Forward.
-            pred0, pred1 = self.model( dispLH, imgLH, imgL )
+            pred0 = self.model( dispLH, imgLH, imgL )
 
-        loss = torch.mean( torch.abs( pred1 - dispL ) )
+        loss = torch.mean( torch.abs( pred0 - dispL ) )
 
         self.countTest += 1
 
@@ -259,7 +279,9 @@ class TrainTestNG(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        self.draw_test_results( identifier, pred1, dispL, dispLH, imgL )
+        # self.draw_test_results( identifier, pred1, dispL, dispLH, imgL )
+        self.draw_test_results( identifier, pred0, dispL, pred0, imgL )
+        self.save_test_disp( identifier, pred0 )
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):

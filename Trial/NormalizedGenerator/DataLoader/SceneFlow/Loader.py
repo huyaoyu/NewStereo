@@ -7,8 +7,10 @@ from __future__ import print_function
 import copy
 import cv2
 import numpy as np
+import os
 from PIL import Image, ImageOps
 import random
+import time
 
 import torch
 import torch.utils.data as data
@@ -109,6 +111,8 @@ class myImageFolder(data.Dataset):
         else:
             self.dispGaussianWindow = None
 
+        np.random.seed( int(os.getpid()) )
+
     def self_normalize(self, x):
         """
         x is an OpenCV mat.
@@ -199,7 +203,9 @@ class myImageFolder(data.Dataset):
         return cv2.resize(x, (w, h), interpolation=cv2.INTER_LINEAR)
 
     def add_disparity_noise(self, disp):
-        n = ( np.random.rand(disp.shape[0], disp.shape[1]) * 2 - 1 ) * self.dispWhiteNoiseLevel
+        randomBase = np.random.rand(disp.shape[0], disp.shape[1])
+        print("randomBase[0,0] = %f, pid = %d. " % (randomBase[0, 0], os.getpid()))
+        n = ( randomBase * 2 - 1 ) * self.dispWhiteNoiseLevel
         n = n.astype( np.float32 )
 
         disp = disp *(1 + n)
@@ -210,7 +216,7 @@ class myImageFolder(data.Dataset):
         """
         disp is OpenCV mat.
         """
-        
+
         if ( self.dispGaussianWindow is None ):
             return disp
 
@@ -228,7 +234,7 @@ class myImageFolder(data.Dataset):
         x[ idx:idx+self.dispGaussianNoiseWidth, idx:idx+self.dispGaussianNoiseWidth ] = \
             x[ idx:idx+self.dispGaussianNoiseWidth, idx:idx+self.dispGaussianNoiseWidth ] * ( 1 + s * self.dispGaussianWindow.astype(np.float32) )
 
-        return x
+        return x, idx
     
     def disparity_2_tensor(self, x):
         """
@@ -255,7 +261,7 @@ class myImageFolder(data.Dataset):
 
             # Disparity.
             dispLH = self.half_size(dispL)
-            dispLH = self.add_disparity_random_Gaussian_noise(dispLH)
+            dispLH, idx = self.add_disparity_random_Gaussian_noise(dispLH)
             dispLH = self.add_disparity_noise(dispLH)
             dispLH, nm, ns = self.self_normalize(dispLH)
             dispL = self.ref_normalize(dispL, nm, ns)
@@ -269,7 +275,8 @@ class myImageFolder(data.Dataset):
 
             # Disparity.
             dispLH = self.half_size(dispL)
-            dispLH = self.add_disparity_random_Gaussian_noise(dispLH)
+            dispLH, idx = self.add_disparity_random_Gaussian_noise(dispLH)
+            print("idx = %d. pid = %d. "%( idx, os.getpid() ))
             dispLH = self.add_disparity_noise(dispLH)
             dispLH, nm, ns = self.self_normalize(dispLH)
             dispL = self.ref_normalize(dispL, nm, ns)

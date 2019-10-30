@@ -50,7 +50,7 @@ class ResBlock(nn.Module):
         
         res += x
 
-        return res
+        return F.relu(res, inplace=True)
 
 class ResPack(nn.Module):
     def __init__(self, inCh, outCh, n, k, scale=None):
@@ -69,7 +69,7 @@ class ResPack(nn.Module):
         res = self.model(x)
         res += x
 
-        return res
+        return F.relu(res, inplace=True)
 
 class ReceptiveBranch(nn.Module):
     def __init__(self, inCh, outCh, r):

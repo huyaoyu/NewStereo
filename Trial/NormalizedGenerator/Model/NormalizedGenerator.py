@@ -59,26 +59,33 @@ class EDSR2(nn.Module):
 
         self.kernelSize = 3
 
-        entryConv = CommonModel.Conv_W( inCh, transCh, self.kernelSize )
-        lastConv  = CommonModel.Conv_W( transCh, outCh, self.kernelSize )
+        self.entryConv = CommonModel.Conv_W( inCh, transCh, self.kernelSize )
+        self.lastConv  = CommonModel.Conv_W( transCh, outCh, self.kernelSize )
+        self.resPack = CommonModel.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
+        self.upsampler = Upsampler( transCh, 2 )
 
-        resPack = CommonModel.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
-        upsampler = Upsampler( transCh, 2 )
-
-        self.model = nn.Sequential( \
-            entryConv, \
-            resPack, \
-            upsampler, \
-            lastConv )
+        # self.model = nn.Sequential( \
+        #     entryConv, \
+        #     resPack, \
+        #     upsampler, \
+        #     lastConv, \
+        #     nn.ReLU(True) )
 
     def forward(self, x):
-        return self.model(x)
+        # return self.model(x)
+
+        x = self.entryConv(x)
+        x = self.resPack(x)
+        x = self.upsampler(x)
+        x = self.lastConv(x)
+        x = F.relu(x, inplace=True)
+        return x
 
 class NormalizedGeneratorParams(object):
     def __init__(self):
         super(NormalizedGeneratorParams, self).__init__()
     
-        self.inCh        = 2
+        self.inCh        = 1
         self.preBranchN  = 2
         self.EDSR2N      = 2
         self.EDSR2S      = 1
@@ -87,25 +94,25 @@ class NormalizedGeneratorParams(object):
 
         # Channel number specification
         self.firstConvIn    = self.inCh
-        self.firstConvOut   = 16
+        self.firstConvOut   = 32
         self.preBranchIn    = self.firstConvOut
-        self.preBranchOut   = 16
+        self.preBranchOut   = 32
         self.branch4In      = self.preBranchOut
-        self.branch4Out     = 16
+        self.branch4Out     = 32
         self.branch16In     = self.preBranchOut
-        self.branch16Out    = 16
+        self.branch16Out    = 64
         self.branch64In     = self.preBranchOut
-        self.branch64Out    = 16
+        self.branch64Out    = 128
         self.concat         = self.preBranchOut + self.branch4Out + self.branch16Out + self.branch64Out
         self.afterBranchIn  = self.concat
-        self.afterBranchOut = 16
+        self.afterBranchOut = 32
         self.EDSR2In        = self.afterBranchOut
         self.EDSR2Trans     = self.EDSR2In
         self.EDSR2Out       = 1
-        self.fsrConv1In     = 3
-        self.fsrConv1Out    = 16
+        self.fsrConv1In     = 1 # The point to add the image guidance.
+        self.fsrConv1Out    = 32
         self.fsrResPackIn   = self.fsrConv1Out
-        self.fsrResPackOut  = 16
+        self.fsrResPackOut  = 32
         self.fsrConv2In     = self.fsrResPackOut
         self.fsrConv2Out    = 1
 
@@ -118,7 +125,7 @@ class NormalizedGenerator(nn.Module):
         self.params = params
 
         # BatchNorm for the images.
-        self.bn = nn.BatchNorm2d(1, track_running_stats=False)
+        # self.bn = nn.BatchNorm2d(1, track_running_stats=False)
 
         # First conv layer.
         self.firstConv = CommonModel.Conv_W( self.params.firstConvIn, self.params.firstConvOut, 3 )
@@ -128,8 +135,8 @@ class NormalizedGenerator(nn.Module):
 
         # Branches.
         self.branch4  = CommonModel.ReceptiveBranch( self.params.branch4In,  self.params.branch4Out,   4 )
-        self.branch16 = CommonModel.ReceptiveBranch( self.params.branch16In, self.params.branch16Out, 16 )
-        self.branch64 = CommonModel.ReceptiveBranch( self.params.branch64In, self.params.branch64Out, 64 )
+        self.branch16 = CommonModel.ReceptiveBranch( self.params.branch16In, self.params.branch16Out,  8 )
+        self.branch64 = CommonModel.ReceptiveBranch( self.params.branch64In, self.params.branch64Out, 16 )
 
         # After branching conv.
         self.afterBranchConv = CommonModel.Conv_W( self.params.afterBranchIn, self.params.afterBranchOut, 3 )
@@ -138,34 +145,34 @@ class NormalizedGenerator(nn.Module):
         self.edsr2 = EDSR2( self.params.EDSR2In, self.params.EDSR2Trans, self.params.EDSR2Out, \
             self.params.EDSR2N, self.params.EDSR2S )
         
-        # Full size refinement conv.
-        self.fsrConv1 = CommonModel.Conv_W( self.params.fsrConv1In, self.params.fsrConv1Out, 3 )
+        # # Full size refinement conv.
+        # self.fsrConv1 = CommonModel.Conv_W( self.params.fsrConv1In, self.params.fsrConv1Out, 3 )
 
-        # Full size refinement ResPack.
-        self.fsrResPack = CommonModel.ResPack( self.params.fsrResPackIn, self.params.fsrResPackOut, \
-            self.params.fsrResPackN, 3, self.params.fsrResPackS )
+        # # Full size refinement ResPack.
+        # self.fsrResPack = CommonModel.ResPack( self.params.fsrResPackIn, self.params.fsrResPackOut, \
+        #     self.params.fsrResPackN, 3, self.params.fsrResPackS )
 
-        # Full size refinement last conv.
-        self.fsrConv2 = CommonModel.Conv_W( self.params.fsrConv2In, self.params.fsrConv2Out, 3 )
+        # # Full size refinement last conv.
+        # self.fsrConv2 = CommonModel.Conv_W( self.params.fsrConv2In, self.params.fsrConv2Out, 3 )
 
-        # Initialization.
-        for m in self.modules():
-            if ( isinstance( m, (nn.Conv2d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
-            elif ( isinstance( m, (nn.Conv3d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
-            elif ( isinstance( m, (nn.BatchNorm2d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.BatchNorm3d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.Linear) ) ):
-                m.bias.data.zero_()
-            # else:
-            #     raise PyramidNetException("Unexpected module type {}.".format(type(m)))
+        # # Initialization.
+        # for m in self.modules():
+        #     if ( isinstance( m, (nn.Conv2d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        #         m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
+        #     elif ( isinstance( m, (nn.Conv3d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+        #         m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
+        #     elif ( isinstance( m, (nn.BatchNorm2d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.BatchNorm3d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.Linear) ) ):
+        #         m.bias.data.zero_()
+        #     # else:
+        #     #     raise PyramidNetException("Unexpected module type {}.".format(type(m)))
     
     def set_cpu_mode(self):
         self.flagCPU = True
@@ -174,15 +181,17 @@ class NormalizedGenerator(nn.Module):
         self.flagCPU = False
 
     def forward(self, dispLH, imgLH, imgL):
-        imgLH = self.bn(imgLH)
-        imgL  = self.bn(imgL)
-        
+        # imgLH = self.bn(imgLH)
+        # imgL  = self.bn(imgL)
+
         # Concat dispLH and imgLH.
-        x = torch.cat( ( dispLH, imgLH ), 1 )
+        # x = torch.cat( ( dispLH, imgLH ), 1 )
+        x = dispLH
 
         # Denoising.
         x   = self.firstConv(x)
         b1  = self.preBranch(x)
+        # b1  = F.relu(b1, inplace=True)
         b4  = self.branch4(b1)
         b16 = self.branch16(b1)
         b64 = self.branch64(b1)
@@ -197,20 +206,22 @@ class NormalizedGenerator(nn.Module):
         features = torch.cat( ( b1, b4, b16, b64 ), 1 )
 
         features = self.afterBranchConv(features)
+        features = F.relu(features, inplace=True)
 
         fsDisp = self.edsr2(features)
 
-        # Pre-pare the additional input for full size refinement.
-        diff = imgL - F.interpolate(imgLH, ( imgL.size()[2], imgL.size()[3] ), mode="bilinear", align_corners=False)
+        # # Pre-pare the additional input for full size refinement.
+        # diff = imgL - F.interpolate(imgLH, ( imgL.size()[2], imgL.size()[3] ), mode="bilinear", align_corners=False)
         
-        # Full size refinement.
-        x = torch.cat( (fsDisp, imgL, diff), 1 )
+        # # Full size refinement.
+        # # x = torch.cat( (fsDisp, imgL, diff), 1 )
+        # x = fsDisp
 
-        x = self.fsrConv1(x)
-        x = self.fsrResPack(x)
-        rFsDisp = self.fsrConv2(x)
+        # x = self.fsrConv1(x)
+        # x = self.fsrResPack(x)
+        # rFsDisp = self.fsrConv2(x)
 
-        return fsDisp, rFsDisp
+        return fsDisp
 
 if __name__ == "__main__":
     print("Test NormalizedGenerator.py")
