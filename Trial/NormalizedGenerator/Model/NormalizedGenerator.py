@@ -87,11 +87,11 @@ class NormalizedGeneratorParams(object):
     
         self.inCh        = 1
         self.preBranchN  = 2
-        self.preBranchS  = 0.5
-        self.EDSR2N      = 2
-        self.EDSR2S      = 0.5
+        self.preBranchS  = 0.1
+        self.EDSR2N      = 8
+        self.EDSR2S      = 0.1
         self.fsrResPackN = 2
-        self.fsrResPackS = 1 # Scale.
+        self.fsrResPackS = 0.1 # Scale.
 
         # Channel number specification
         self.firstConvIn    = self.inCh
@@ -106,7 +106,7 @@ class NormalizedGeneratorParams(object):
         self.branch64Out    = 128
         self.concat         = self.preBranchOut + self.branch4Out + self.branch16Out + self.branch64Out
         self.afterBranchIn  = self.concat
-        self.afterBranchOut = 32
+        self.afterBranchOut = 128
         self.EDSR2In        = self.afterBranchOut
         self.EDSR2Trans     = self.EDSR2In
         self.EDSR2Out       = 1
@@ -156,29 +156,29 @@ class NormalizedGenerator(nn.Module):
         # # Full size refinement last conv.
         # self.fsrConv2 = CommonModel.Conv_W( self.params.fsrConv2In, self.params.fsrConv2Out, 3 )
 
-        # Initialization.
-        for m in self.modules():
-            # print(m)
-            if ( isinstance( m, (nn.Conv2d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
-                m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
-                # print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
-            elif ( isinstance( m, (nn.Conv3d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
-                m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
-            elif ( isinstance( m, (nn.BatchNorm2d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.BatchNorm3d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.Linear) ) ):
-                m.weight.data.uniform_(0, 1)
-                m.bias.data.zero_()
-            # else:
-            #     raise Exception("Unexpected module type {}.".format(type(m)))
+        # # Initialization.
+        # for m in self.modules():
+        #     # print(m)
+        #     if ( isinstance( m, (nn.Conv2d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
+        #         m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/10000)
+        #         # print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+        #     elif ( isinstance( m, (nn.Conv3d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
+        #         m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
+        #     elif ( isinstance( m, (nn.BatchNorm2d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.BatchNorm3d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.Linear) ) ):
+        #         m.weight.data.uniform_(0, 1)
+        #         m.bias.data.zero_()
+        #     # else:
+        #     #     raise Exception("Unexpected module type {}.".format(type(m)))
     
     def set_cpu_mode(self):
         self.flagCPU = True
