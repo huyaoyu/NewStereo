@@ -67,9 +67,11 @@ class TrainTestBase(object):
         self.flagCPU   = False
         self.multiGPUs = False
 
-        self.readModelString    = ""
-        self.autoSaveModelLoops = 0 # The number of loops to perform an auto-saving of the model. 0 for disable.
+        self.readModelString     = ""
+        self.readOptimizerString = ""
+        self.autoSaveModelLoops  = 0 # The number of loops to perform an auto-saving of the model. 0 for disable.
 
+        self.optType   = "adam" # The optimizer type. adam, sgd.
         self.optimizer = None
         self.learningRate = 0.001
 
@@ -193,6 +195,14 @@ class TrainTestBase(object):
 
         if ( "" != self.readModelString ):
             self.frame.logger.info("Read model from %s." % ( self.readModelString ))
+
+    def set_read_optimizer(self, readOptimizerString):
+        self.check_frame()
+
+        self.readOptimizerString = readOptimizerString
+
+        if ( "" != self.readOptimizerString ):
+            self.frame.logger.info("Read optimizer from %s. " % ( self.readOptimizerString ))
 
     def enable_auto_save(self, loops):
         self.check_frame()
@@ -332,5 +342,8 @@ class TrainTestBase(object):
 
             self.model.cuda()
     
+    def set_optimizer_type(self, t):
+        self.optType = t
+
     def init_optimizer(self):
         raise Exception("init_optimizer() virtual interface.")

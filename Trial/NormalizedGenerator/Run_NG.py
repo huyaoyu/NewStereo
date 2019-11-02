@@ -116,6 +116,7 @@ if __name__ == "__main__":
         # tt.flagGrayscale = args.grayscale
 
         # Set parameters.
+        tt.set_optimizer_type(args.optimizer)
         tt.set_learning_rate(args.lr)
         tt.set_data_loader_params( \
             args.dl_batch_size, not args.dl_disable_shuffle, args.dl_num_workers, args.dl_drop_last, \
