@@ -220,8 +220,10 @@ class myImageFolder(data.Dataset):
             return disp
 
         # Get a random starting index.
-        n   = disp.shape[0] - self.dispGaussianNoiseWidth
-        idx = torch.randint( 0, n, (1, ) ).item()
+        n0   = disp.shape[0] - self.dispGaussianNoiseWidth
+        n1   = disp.shape[1] - self.dispGaussianNoiseWidth
+        idx0 = torch.randint( 0, n0, (1, ) ).item()
+        idx1 = torch.randint( 0, n1, (1, ) ).item()
 
         # Get a random scale.
         s = ( torch.rand(1).item() * 2 - 1 ) * 0.5
@@ -230,8 +232,8 @@ class myImageFolder(data.Dataset):
         x = copy.deepcopy(disp)
 
         # The in-place indexing assignment.
-        x[ idx:idx+self.dispGaussianNoiseWidth, idx:idx+self.dispGaussianNoiseWidth ] = \
-            x[ idx:idx+self.dispGaussianNoiseWidth, idx:idx+self.dispGaussianNoiseWidth ] * ( 1 + s * self.dispGaussianWindow.astype(np.float32) )
+        x[ idx0:idx0+self.dispGaussianNoiseWidth, idx1:idx1+self.dispGaussianNoiseWidth ] = \
+            x[ idx0:idx0+self.dispGaussianNoiseWidth, idx1:idx1+self.dispGaussianNoiseWidth ] * ( 1 + s * self.dispGaussianWindow.astype(np.float32) )
 
         return x
     

@@ -39,7 +39,7 @@ class Conv_W(nn.Module):
             raise Exception("k must be an odd number. k = {}. ".format(k))
 
         self.model = nn.Sequential( \
-            nn.ReflectionPad2d(padding=k//2)
+            nn.ReflectionPad2d(padding=k//2), 
             nn.Conv2d(inCh, outCh, kernel_size=k, stride=1, padding=0, dilation=1, bias=True)
         )
 

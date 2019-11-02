@@ -117,7 +117,7 @@ class TrainTestNG(TrainTestBase):
             if ( not os.path.isfile( optFn ) ):
                 raise Exception("Optimizer file (%s) does not exist. " % ( optFn ))
 
-            self.optimizer = self.frame.load_optimizer(self.optimizer, optName)
+            self.optimizer = self.frame.load_optimizer(self.optimizer, optFn)
 
             self.frame.logger.info("Optimizer state loaded for file %s. " % (optFn))
 

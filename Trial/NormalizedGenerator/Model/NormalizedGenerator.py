@@ -59,10 +59,11 @@ class EDSR2(nn.Module):
 
         self.kernelSize = 3
 
-        self.entryConv = cm.Conv_W( inCh, transCh, self.kernelSize )
-        self.lastConv  = cm.Conv_W( transCh, outCh, self.kernelSize )
-        self.resPack   = cm.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
-        self.upsampler = Upsampler( transCh, 2 )
+        self.entryConv     = cm.Conv_W( inCh, transCh, self.kernelSize )
+        self.resPack       = cm.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
+        self.upsampler     = Upsampler( transCh, 2 )
+        self.afterUpsample = cm.ResBlock( transCh, transCh, self.kernelSize, resScale )
+        self.lastConv      = cm.Conv_W( transCh, outCh, self.kernelSize )
 
         # self.model = nn.Sequential( \
         #     entryConv, \
@@ -77,9 +78,10 @@ class EDSR2(nn.Module):
         x = self.entryConv(x)
         x = self.resPack(x)
         x = self.upsampler(x)
+        x = self.afterUpsample(x)
         x = self.lastConv(x)
         # x = F.relu(x, inplace=True)
-        x = cm.selected_relu(x)
+        # x = cm.selected_relu(x)
         return x
 
 class NormalizedGeneratorParams(object):
@@ -89,25 +91,25 @@ class NormalizedGeneratorParams(object):
         self.inCh        = 1
         self.preBranchN  = 2
         self.preBranchS  = 0.1
-        self.EDSR2N      = 8
+        self.EDSR2N      = 4
         self.EDSR2S      = 0.1
         self.fsrResPackN = 2
         self.fsrResPackS = 0.1 # Scale.
 
         # Channel number specification
         self.firstConvIn    = self.inCh
-        self.firstConvOut   = 32
+        self.firstConvOut   = 64
         self.preBranchIn    = self.firstConvOut
-        self.preBranchOut   = 32
+        self.preBranchOut   = self.preBranchIn
         self.branch4In      = self.preBranchOut
         self.branch4Out     = 32
         self.branch16In     = self.preBranchOut
-        self.branch16Out    = 64
+        self.branch16Out    = 32
         self.branch64In     = self.preBranchOut
-        self.branch64Out    = 128
+        self.branch64Out    = 32
         self.concat         = self.preBranchOut + self.branch4Out + self.branch16Out + self.branch64Out
         self.afterBranchIn  = self.concat
-        self.afterBranchOut = 128
+        self.afterBranchOut = 64
         self.EDSR2In        = self.afterBranchOut
         self.EDSR2Trans     = self.EDSR2In
         self.EDSR2Out       = 1
