@@ -10,4 +10,8 @@ Data/
 data/
 *.code-workspace
 Trial/NormalizedGenerator/WD/
+.vscode/
+*.egg
+*/*.egg-info/
+Correlation/build/
 
