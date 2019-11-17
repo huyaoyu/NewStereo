@@ -14,4 +14,4 @@ Trial/NormalizedGenerator/WD/
 *.egg
 */*.egg-info/
 Correlation/build/
-
+*.installed_files.txt
