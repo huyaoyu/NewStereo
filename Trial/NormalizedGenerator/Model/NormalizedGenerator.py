@@ -26,9 +26,9 @@ if ( __name__ == "__main__" ):
     import sys
 
     sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/NormalizedGenerator/Model")
-    import CommonModel
+    import CommonModel as cm
 else:
-    from . import CommonModel
+    from . import CommonModel as cm
 
 class Upsampler(nn.Module):
     def __init__(self, inCh, r):
@@ -46,9 +46,9 @@ class Upsampler(nn.Module):
         transCh = int( r**2 * inCh )
 
         self.model = nn.Sequential( \
-            CommonModel.Conv_W(inCh, transCh, self.kernelSize), \
+            cm.Conv_W(inCh, transCh, self.kernelSize), \
             nn.PixelShuffle(upscale_factor=self.r), \
-            nn.ReLU(True) )
+            cm.SelectedReLU() )
     
     def forward(self, x):
         return self.model(x)
@@ -59,10 +59,11 @@ class EDSR2(nn.Module):
 
         self.kernelSize = 3
 
-        self.entryConv = CommonModel.Conv_W( inCh, transCh, self.kernelSize )
-        self.lastConv  = CommonModel.Conv_W( transCh, outCh, self.kernelSize )
-        self.resPack = CommonModel.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
-        self.upsampler = Upsampler( transCh, 2 )
+        self.entryConv     = cm.Conv_W( inCh, transCh, self.kernelSize )
+        self.resPack       = cm.ResPack( transCh, transCh, resN, self.kernelSize, resScale )
+        self.upsampler     = Upsampler( transCh, 2 )
+        self.afterUpsample = cm.ResBlock( transCh, transCh, self.kernelSize, resScale )
+        self.lastConv      = cm.Conv_W( transCh, outCh, self.kernelSize )
 
         # self.model = nn.Sequential( \
         #     entryConv, \
@@ -77,8 +78,10 @@ class EDSR2(nn.Module):
         x = self.entryConv(x)
         x = self.resPack(x)
         x = self.upsampler(x)
+        x = self.afterUpsample(x)
         x = self.lastConv(x)
-        x = F.relu(x, inplace=True)
+        # x = F.relu(x, inplace=True)
+        # x = cm.selected_relu(x)
         return x
 
 class NormalizedGeneratorParams(object):
@@ -87,26 +90,26 @@ class NormalizedGeneratorParams(object):
     
         self.inCh        = 1
         self.preBranchN  = 2
-        self.preBranchS  = 0.5
-        self.EDSR2N      = 2
-        self.EDSR2S      = 0.5
+        self.preBranchS  = 0.1
+        self.EDSR2N      = 4
+        self.EDSR2S      = 0.1
         self.fsrResPackN = 2
-        self.fsrResPackS = 1 # Scale.
+        self.fsrResPackS = 0.1 # Scale.
 
         # Channel number specification
         self.firstConvIn    = self.inCh
-        self.firstConvOut   = 32
+        self.firstConvOut   = 64
         self.preBranchIn    = self.firstConvOut
-        self.preBranchOut   = 32
+        self.preBranchOut   = self.preBranchIn
         self.branch4In      = self.preBranchOut
         self.branch4Out     = 32
         self.branch16In     = self.preBranchOut
-        self.branch16Out    = 64
+        self.branch16Out    = 32
         self.branch64In     = self.preBranchOut
-        self.branch64Out    = 128
+        self.branch64Out    = 32
         self.concat         = self.preBranchOut + self.branch4Out + self.branch16Out + self.branch64Out
         self.afterBranchIn  = self.concat
-        self.afterBranchOut = 32
+        self.afterBranchOut = 64
         self.EDSR2In        = self.afterBranchOut
         self.EDSR2Trans     = self.EDSR2In
         self.EDSR2Out       = 1
@@ -129,41 +132,41 @@ class NormalizedGenerator(nn.Module):
         # self.bn = nn.BatchNorm2d(1, track_running_stats=False)
 
         # First conv layer.
-        self.firstConv = CommonModel.Conv_W( self.params.firstConvIn, self.params.firstConvOut, 3 )
+        self.firstConv = cm.Conv_W( self.params.firstConvIn, self.params.firstConvOut, 3 )
 
         # Pre-branch ResPack.
-        self.preBranch = CommonModel.ResPack( self.params.preBranchIn, self.params.preBranchOut, self.params.preBranchN, 3, self.params.preBranchS )
+        self.preBranch = cm.ResPack( self.params.preBranchIn, self.params.preBranchOut, self.params.preBranchN, 3, self.params.preBranchS )
 
         # Branches.
-        self.branch4  = CommonModel.ReceptiveBranch( self.params.branch4In,  self.params.branch4Out,   4 )
-        self.branch16 = CommonModel.ReceptiveBranch( self.params.branch16In, self.params.branch16Out,  8 )
-        self.branch64 = CommonModel.ReceptiveBranch( self.params.branch64In, self.params.branch64Out, 16 )
+        self.branch4  = cm.ReceptiveBranch( self.params.branch4In,  self.params.branch4Out,   4 )
+        self.branch16 = cm.ReceptiveBranch( self.params.branch16In, self.params.branch16Out,  8 )
+        self.branch64 = cm.ReceptiveBranch( self.params.branch64In, self.params.branch64Out, 16 )
 
         # After branching conv.
-        self.afterBranchConv = CommonModel.Conv_W( self.params.afterBranchIn, self.params.afterBranchOut, 3 )
+        self.afterBranchConv = cm.Conv_W( self.params.afterBranchIn, self.params.afterBranchOut, 3 )
 
         # EDSR2.
         self.edsr2 = EDSR2( self.params.EDSR2In, self.params.EDSR2Trans, self.params.EDSR2Out, \
             self.params.EDSR2N, self.params.EDSR2S )
         
         # # Full size refinement conv.
-        # self.fsrConv1 = CommonModel.Conv_W( self.params.fsrConv1In, self.params.fsrConv1Out, 3 )
+        # self.fsrConv1 = cm.Conv_W( self.params.fsrConv1In, self.params.fsrConv1Out, 3 )
 
         # # Full size refinement ResPack.
-        # self.fsrResPack = CommonModel.ResPack( self.params.fsrResPackIn, self.params.fsrResPackOut, \
+        # self.fsrResPack = cm.ResPack( self.params.fsrResPackIn, self.params.fsrResPackOut, \
         #     self.params.fsrResPackN, 3, self.params.fsrResPackS )
 
         # # Full size refinement last conv.
-        # self.fsrConv2 = CommonModel.Conv_W( self.params.fsrConv2In, self.params.fsrConv2Out, 3 )
+        # self.fsrConv2 = cm.Conv_W( self.params.fsrConv2In, self.params.fsrConv2Out, 3 )
 
         # Initialization.
         for m in self.modules():
             # print(m)
             if ( isinstance( m, (nn.Conv2d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                n = m.kernel_size[0] * m.kernel_size[1]
                 # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
-                m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
-                # print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+                m.weight.data.normal_(1/n, math.sqrt( 2.0 / n ))
+                m.weight.data = m.weight.data / m.in_channels
             elif ( isinstance( m, (nn.Conv3d) ) ):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
                 # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
@@ -212,7 +215,8 @@ class NormalizedGenerator(nn.Module):
         features = torch.cat( ( b1, b4, b16, b64 ), 1 )
 
         features = self.afterBranchConv(features)
-        features = F.relu(features, inplace=True)
+        # features = F.relu(features, inplace=True)
+        features = cm.selected_relu(features)
 
         fsDisp = self.edsr2(features)
 

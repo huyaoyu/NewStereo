@@ -103,7 +103,23 @@ class TrainTestNG(TrainTestBase):
     # Overload parent's function.
     def init_optimizer(self):
         # self.optimizer = optim.Adam( self.model.parameters(), lr=0.001, betas=(0.9, 0.999) )
-        self.optimizer = optim.Adam( self.model.parameters(), lr=self.learningRate )
+        if ( "adam" == self.optType ):
+            self.optimizer = optim.Adam( self.model.parameters(), lr=self.learningRate )
+        elif ( "sgd" == self.optType ):
+            self.optimizer = optim.SGD( self.model.parameters(), lr=self.learningRate )
+        else:
+            raise Exception("Unexpected optimizer type: {}. ".format(self.optType))
+
+        # Check if we have to read the optimizer state from the filesystem.
+        if ( "" != self.readOptimizerString ):
+            optFn = "%s/models/%s" % ( self.frame.workingDir, self.readOptimizerString )
+
+            if ( not os.path.isfile( optFn ) ):
+                raise Exception("Optimizer file (%s) does not exist. " % ( optFn ))
+
+            self.optimizer = self.frame.load_optimizer(self.optimizer, optFn)
+
+            self.frame.logger.info("Optimizer state loaded for file %s. " % (optFn))
 
     # Overload parent's function.
     def train(self, imgL, imgR, dispL, dispLH, imgLH, epochCount):
@@ -155,8 +171,10 @@ class TrainTestNG(TrainTestBase):
         if ( 0 != self.autoSaveModelLoops ):
             if ( self.countTrain % self.autoSaveModelLoops == 0 ):
                 modelName = "AutoSave_%08d" % ( self.countTrain )
-                self.frame.logger.info("Auto-save the model.")
+                optName   = "AutoSave_Opt_%08d" % ( self.countTrain )
+                self.frame.logger.info("Auto-save the model and optimizer.")
                 self.frame.save_model( self.model, modelName )
+                self.frame.save_optimizer( self.optimizer, optName )
 
         self.frame.logger.info("E%d, L%d: %s" % (epochCount, self.countTrain, self.frame.get_log_str()))
 
@@ -267,8 +285,8 @@ class TrainTestNG(TrainTestBase):
         with torch.no_grad():
             # Forward.
             pred0 = self.model( dispLH, imgLH, imgL )
-
-        loss = torch.mean( torch.abs( pred0 - dispL ) )
+            loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" )
+            # loss = torch.mean( torch.abs( pred0 - dispL ) )
 
         self.countTest += 1
 
@@ -316,7 +334,8 @@ class TrainTestNG(TrainTestBase):
     def finalize(self):
         self.check_frame()
 
-        # Save the model.
+        # Save the model and optimizer.
         if ( False == self.flagTest and False == self.flagInfer ):
             self.frame.save_model( self.model, "NG" )
+            self.frame.save_optimizer( self.optimizer, "NG_Opt" )
         # self.frame.logger.warning("Model not saved for dummy test.")

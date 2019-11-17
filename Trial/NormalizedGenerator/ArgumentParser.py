@@ -11,7 +11,10 @@ parser.add_argument("--input", type=str, default="", \
     help="The filename of the input JSON file.")
 
 parser.add_argument("--read-model", type=str, default="", \
-    help="Real model from working directory. Supply empty string for not reading model.")
+    help="Read model from working directory. Supply empty string for not reading model.")
+
+parser.add_argument("--read-optimizer", type=str, default="", \
+    help="Read the optimizer state from the working directory. Leave blank for not reading the optimizer.")
 
 parser.add_argument("--prefix", type=str, default="", \
     help="The prefix of the work flow. The user should supply delimiters such as _ .")
@@ -24,6 +27,9 @@ parser.add_argument("--multi-gpus", action="store_true", default=False, \
 
 parser.add_argument("--cpu", action="store_true", default=False, \
     help="Set this flag to use cpu only. This will overwrite --multi-gpus flag.")
+
+parser.add_argument("--optimizer", type=str, default="adam", \
+    help="The opitimizer. adam, sgd.")
 
 parser.add_argument("--lr", type=float, default=0.0001, \
     help="Learning rate.")

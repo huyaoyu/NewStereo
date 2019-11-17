@@ -16,6 +16,18 @@ def is_odd(x):
     else:
         return True
 
+def selected_relu(x):
+    return F.selu(x, inplace=True)
+
+class SelectedReLU(nn.Module):
+    def __init__(self):
+        super(SelectedReLU, self).__init__()
+
+        self.model = nn.SELU(True)
+
+    def forward(self, x):
+        return self.model(x)
+
 class Conv_W(nn.Module):
     def __init__(self, inCh, outCh, k=3):
         """
@@ -26,7 +38,10 @@ class Conv_W(nn.Module):
         if ( not is_odd(k) ):
             raise Exception("k must be an odd number. k = {}. ".format(k))
 
-        self.model = nn.Conv2d(inCh, outCh, kernel_size=k, stride=1, padding=k//2, dilation=1, bias=True)
+        self.model = nn.Sequential( \
+            nn.ReflectionPad2d(padding=k//2), 
+            nn.Conv2d(inCh, outCh, kernel_size=k, stride=1, padding=0, dilation=1, bias=True)
+        )
 
     def forward(self, x):
         return self.model(x)
@@ -37,7 +52,7 @@ class ResBlock(nn.Module):
 
         self.model = nn.Sequential( \
             Conv_W(inCh, inCh, k), \
-            nn.ReLU(True), \
+            SelectedReLU(), \
             Conv_W(inCh, outCh, k) )
         
         self.scale = scale
@@ -50,7 +65,7 @@ class ResBlock(nn.Module):
         
         res += x
 
-        return F.relu(res, inplace=True)
+        return selected_relu(res)
 
 class ResPack(nn.Module):
     def __init__(self, inCh, outCh, n, k, scale=None):
@@ -69,7 +84,7 @@ class ResPack(nn.Module):
         res = self.model(x)
         res += x
 
-        return F.relu(res, inplace=True)
+        return selected_relu(res)
 
 class ReceptiveBranch(nn.Module):
     def __init__(self, inCh, outCh, r):
@@ -78,7 +93,7 @@ class ReceptiveBranch(nn.Module):
         self.model = nn.Sequential( \
             nn.AvgPool2d( kernel_size=r, stride=r, padding=0, ceil_mode=False, count_include_pad=True ), \
             nn.Conv2d( inCh, outCh, kernel_size=1, stride=1, padding=0, dilation=1, bias=True ), \
-            nn.ReLU(True) )
+            SelectedReLU() )
 
     def forward(self, x):
         return self.model(x)
