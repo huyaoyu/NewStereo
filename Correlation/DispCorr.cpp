@@ -8,10 +8,9 @@ std::vector<torch::Tensor> disp_corr_forward( torch::Tensor input )
     return { torch::sigmoid( input ) };
 }
 
-std::vector<torch::Tensor> disp_corr_backward( torch::Tensor grad, torch::Tensor s, torch::Tensor x )
+std::vector<torch::Tensor> disp_corr_backward( torch::Tensor grad, torch::Tensor s )
 {
-    auto enx = torch::exp( -1.0 * x );
-    auto sp  = enx * s * s;
+    auto sp  = (1 - s) * s;
 
     return { grad * sp };
 }

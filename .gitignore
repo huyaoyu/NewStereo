@@ -15,3 +15,5 @@ Trial/NormalizedGenerator/WD/
 */*.egg-info/
 Correlation/build/
 *.installed_files.txt
+CorrelationCUDA/build/
+CorrelationCUDA/dist/
