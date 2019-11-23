@@ -6,7 +6,10 @@
 torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding );
 
 // CUDA module interfaces.
-std::vector<torch::Tensor> corr_2d_forward_cuda( torch::Tensor input );
+torch::Tensor corr_2d_forward_cuda( 
+    torch::Tensor input0, torch::Tensor input1, 
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD );
+
 std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor s );
 
 // C++ interfaces.
@@ -22,11 +25,15 @@ torch::Tensor test_from_BCHW_2_BHWC_padded(torch::Tensor input, int padding)
     return from_BCHW_2_BHWC_padded_cuda(input, padding);
 }
 
-std::vector<torch::Tensor> corr_2d_forward( torch::Tensor input )
+torch::Tensor corr_2d_forward( 
+    torch::Tensor input0, torch::Tensor input1, 
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
-    CHECK_INPUT(input);
+    CHECK_INPUT(input0);
+    CHECK_INPUT(input1);
 
-    return corr_2d_forward_cuda(input);
+    return corr_2d_forward_cuda(input0, input1, 
+        padding, kernelSize, maxDisplacement, strideK, strideD );
 }
 
 std::vector<torch::Tensor> corr_2d_backward( torch::Tensor grad, torch::Tensor s )
