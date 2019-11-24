@@ -102,6 +102,7 @@ __global__ void k_corr_2d_forward(
     const int inC = input0.size(3);
 
     // Kernel.
+    const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
     const int k2 = kernelSize * kernelSize;
     const int nElements = k2 * inC;
 
@@ -114,9 +115,10 @@ __global__ void k_corr_2d_forward(
     scalar_t* kernel0 = (scalar_t*)sharedMemory;
     scalar_t* corrResults = kernel0 + nElements;
 
-    // Starting indices.
-    const int x0 = idxXOut * strideK + maxDisplacement;
-    const int y0 = idxYOut * strideK;
+    // The upper-left corner of the current kernel.
+    // Note that, for normal situation, kernelRadius == padding.
+    const int x0 = idxXOut * strideK - kernelRadius + padding + maxDisplacement;
+    const int y0 = idxYOut * strideK - kernelRadius + padding;
 
     // Load the kernel data of input0 into the shared memory.
     for ( int j = 0; j < kernelSize; j++ ) // Height.
@@ -167,6 +169,7 @@ __global__ void k_corr_2d_forward(
         }
     }
 
+    // // Test sum after load to shared memory.
     // __syncthreads();
 
     // if ( 0 == idxC )
@@ -190,34 +193,25 @@ __global__ void k_corr_2d_forward(
 }
 
 template <typename scalar_t> 
-__global__ void k_corr_2d_backward(
-    const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> grad,
-    const torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> s,
-    torch::PackedTensorAccessor<scalar_t, 3, torch::RestrictPtrTraits, size_t> output )
+__global__ void k_corr_2d_backward_0(
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output0,
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
-    const int idxX    = blockIdx.x * blockDim.x + threadIdx.x;
-    const int idxY    = blockIdx.y * blockDim.y + threadIdx.y;
-    const int idxZ    = blockIdx.z * blockDim.z + threadIdx.z;
-    const int strideX = gridDim.x * blockDim.x;
-    const int strideY = gridDim.y * blockDim.y;
-    const int strideZ = gridDim.z * blockDim.z;
+    
+}
 
-    const int b = s.size(0);
-    const int h = s.size(1);
-    const int w = s.size(2);
-
-    for (int z = idxZ; z < b; z += strideZ )
-    {
-        for ( int y = idxY; y < h; y += strideY )
-        {
-            for ( int x = idxX; x < w; x += strideX )
-            {
-                output[z][y][x] = 
-                    grad[z][y][x] * 
-                    ( 1.0 - s[z][y][x] ) * s[z][y][x];
-            }
-        }
-    }
+template <typename scalar_t> 
+__global__ void k_corr_2d_backward_1(
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output1,
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
+{
+    
 }
 
 // ========== Interface functions. ==========
@@ -276,6 +270,8 @@ torch::Tensor corr_2d_forward_cuda(
 
     const int inC = input0.size(1);
 
+    // kernelSize is assumed to be an odd number.
+    // NOTE: For normal situations, kernelRadius == padding.
     const int kernelRadius = ( kernelSize - 1 ) / 2;
 
     const int paddedInputH = H + padding*2;
@@ -353,32 +349,90 @@ torch::Tensor corr_2d_forward_cuda(
     return output;
 }
 
-std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor s )
+std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor input0, torch::Tensor input1, 
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
-    // Get the batch size.
-    auto b = s.size(0);
+    // Get the dimensions of the original input.
+    const int B = input0.size(0);
+    const int H = input0.size(2);
+    const int W = input0.size(3);
 
-    // Get the 2D tensor dimesnions.
-    auto h = s.size(1);
-    auto w = s.size(2);
+    const int inC = input0.size(1);
 
-    // The result.
-    auto output = torch::zeros_like(s);
+    // kernelSize is assumed to be an odd number.
+    // NOTE: For normal situations, kernelRadius == padding.
+    const int kernelRadius = ( kernelSize - 1 ) / 2;
 
-    const int threadsX = 2;
-    const int threadsY = 2;
+    const int paddedInputH = H + padding*2;
+    const int paddedInputW = W + padding*2;
+    
+    const int gridRadius = maxDisplacement / strideD;
 
-    // Kernal launch dimensions.
-    const dim3 blocks( ( w + threadsX - 1 ) / threadsX, ( h + threadsY - 1 ) / threadsY, b );
-    const dim3 thrds( threadsX, threadsY, 1 );
+    // Output.
+    auto output0 = torch::zeros_like(input0);
+    auto output1 = torch::zeros_like(input1);
 
-    // Kernal launch.
-    AT_DISPATCH_FLOATING_TYPES( s.type(), "corr_2d_backward_cuda", ( [&] {
-        k_corr_2d_backward<scalar_t><<<blocks, thrds>>>( 
-            grad.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-            s.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>(),
-            output.packed_accessor<scalar_t, 3, torch::RestrictPtrTraits, size_t>() );
+    // // Rearrange the inputs.
+    auto r0 = from_BCHW_2_BHWC_padded_cuda(input0, padding);
+    auto r1 = from_BCHW_2_BHWC_padded_cuda(input1, padding);
+
+    // Kernel launch specification.
+    const int threads = CUDA_PARAMS::CUDA_MAX_THREADS_PER_BLOCK;
+    const dim3 blocks( 1, 1, B );
+    const dim3 thrds( threads, 1, 1 );
+
+    // Shared memory size.
+    // The size of one kernel across all the input channels and 
+    // additional space for saving the correlation results for
+    // each thread in a block.
+    const int sizeSharedMemory = kernelSize * kernelSize * inC + threads;
+
+    // CUDA context check.
+    cudaError_t err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        std::stringstream ss;
+        ss << "corr_2d_forward_backward: cudaGetLastError() returns " << err;
+        throw std::runtime_error(ss.str());
+    }
+
+    // Kernel launch.
+    AT_DISPATCH_FLOATING_TYPES( r0.type(), "corr_2d_backward_cuda_0", ( [&] {
+        k_corr_2d_backward_0<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
+            grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            output0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            padding, kernelSize, maxDisplacement, strideK, strideD );
     } ) );
 
-    return { output };
+    // CUDA context check.
+    err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        std::stringstream ss;
+        ss << "corr_2d_backward_cuda: cudaGetLastError() returns " << err;
+        throw std::runtime_error(ss.str());
+    }
+
+    // Kernel launch.
+    AT_DISPATCH_FLOATING_TYPES( r0.type(), "corr_2d_backward_cuda_1", ( [&] {
+        k_corr_2d_backward_1<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
+            grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            output1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            padding, kernelSize, maxDisplacement, strideK, strideD );
+    } ) );
+
+    // CUDA context check.
+    err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        std::stringstream ss;
+        ss << "corr_2d_backward_cuda: cudaGetLastError() returns " << err;
+        throw std::runtime_error(ss.str());
+    }
+
+    return { output0, output1 };
 }
