@@ -195,23 +195,163 @@ __global__ void k_corr_2d_forward(
 template <typename scalar_t> 
 __global__ void k_corr_2d_backward_0(
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
-    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output0,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
+    const int x0 = blockIdx.x * strideK + padding;
+    const int y0 = blockIdx.y * strideK + padding;
+    const int idxInC = blockIdx.z;
+
+    const int gradH = grad.size(2);
+    const int gradW = grad.size(3);
+
+    const int gridOffset    = threadIdx.x; // The channel index of grad.
+    const int gridRadius    = maxDisplacement / strideD;
+    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridIdxStride = blockDim.x;
     
+    const int B = input1.size(0); // Same with output0.
+
+    const int kernelRadius = kernelSize / 2;
+    const int nEles = kernelSize * kernelSize * input1.size(3); // Already re-ordered.
+    
+    // The indices in grad that correspond to the kernels that cover the (x0, y0) position in input0.
+    int xGMin = ( x0 - maxDisplacement - kernelRadius ) / strideK; // Padded.
+    int yGMin = ( y0                   - kernelRadius ) / strideK;
+
+    int xGMax = ( x0 - maxDisplacement + kernelRadius ) / strideK;
+    int yGMax = ( y0                   + kernelRadius ) / strideK;
+
+    if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
+    {
+        return;
+    }
+
+    // Clipping the indices.
+    xGMin = max( 0, xGMin );
+    xGMax = min( gradW - 1, xGMax );
+    yGMin = max( 0, yGMin );
+    yGMax = min( gradH - 1, yGMax );
+
+    extern __shared__ scalar_t sum[]; // Should be the number of threads in this block.
+
+    for ( int b = 0; b < B; b++ )
+    {
+        sum[gridOffset] = 0.0;
+
+        for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
+        {
+            int y1 = y0;
+            int x1 = x0 - gridRadius * strideD + g * strideD; // Padded.
+
+            scalar_t value1 = input1[b][y1][x1][idxInC];
+
+            for ( int yG = yGMin; yG <= yGMax; yG++ )
+            {
+                for ( int xG = xGMin; xG <= xGMax; xG++ )
+                {
+                    sum[gridOffset] += grad[b][yG][xG][g] * value1;
+                }
+            }
+        }
+
+        __syncthreads();
+
+        if ( 0 == gridOffset )
+        {
+            scalar_t acc = 0;
+            for ( int g = 0; g < blockDim.x; g++ )
+            {
+                acc += sum[g];
+            }
+
+            output0[b][idxInC][y0 - padding][x0 - padding] = acc / nEles; 
+        }
+
+        __syncthreads();
+    }
 }
 
 template <typename scalar_t> 
 __global__ void k_corr_2d_backward_1(
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
-    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output1,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
+    const int x1 = blockIdx.x * strideK + padding;
+    const int y1 = blockIdx.y * strideK + padding;
+    const int idxInC = blockIdx.z;
+
+    const int gradH = grad.size(2);
+    const int gradW = grad.size(3);
+
+    const int gridOffset    = threadIdx.x; // The channel index of grad.
+    const int gridRadius    = maxDisplacement / strideD;
+    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridIdxStride = blockDim.x;
     
+    const int B = input0.size(0); // Same with output1.
+
+    const int kernelRadius = kernelSize / 2;
+    const int nEles = kernelSize * kernelSize * input0.size(3); // Already re-ordered.
+
+    extern __shared__ scalar_t sum[]; // Should be the number of threads in this block.
+
+    for ( int b = 0; b < B; b++ )
+    {
+        sum[gridOffset] = 0.0;
+
+        for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
+        {
+            int y0 = y1;
+            int x0 = x1 - gridRadius * strideD + g * strideD; // Padded.
+
+            // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
+            int xGMin = ( x1 - maxDisplacement - kernelRadius ) / strideK; // Padded.
+            int yGMin = ( y1                   - kernelRadius ) / strideK;
+
+            int xGMax = ( x1 - maxDisplacement + kernelRadius ) / strideK;
+            int yGMax = ( y1                   + kernelRadius ) / strideK;
+
+            if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
+            {
+                continue;
+            }
+
+            // Clipping the indices.
+            xGMin = max( 0, xGMin );
+            xGMax = min( gradW - 1, xGMax );
+            yGMin = max( 0, yGMin );
+            yGMax = min( gradH - 1, yGMax );
+
+            scalar_t value0 = input0[b][y1][x1][idxInC];
+
+            for ( int yG = yGMin; yG <= yGMax; yG++ )
+            {
+                for ( int xG = xGMin; xG <= xGMax; xG++ )
+                {
+                    sum[gridOffset] += grad[b][yG][xG][g] * value0;
+                }
+            }
+        }
+
+        __syncthreads();
+
+        if ( 0 == gridOffset )
+        {
+            scalar_t acc = 0;
+            for ( int g = 0; g < blockDim.x; g++ )
+            {
+                acc += sum[g];
+            }
+
+            output1[b][idxInC][y0 - padding][x0 - padding] = acc / nEles; 
+        }
+
+        __syncthreads();
+    }
 }
 
 // ========== Interface functions. ==========
@@ -377,15 +517,16 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     auto r1 = from_BCHW_2_BHWC_padded_cuda(input1, padding);
 
     // Kernel launch specification.
-    const int threads = CUDA_PARAMS::CUDA_MAX_THREADS_PER_BLOCK;
-    const dim3 blocks( 1, 1, B );
+    // const int threads = CUDA_PARAMS::CUDA_MAX_THREADS_PER_BLOCK;
+    const int threads = CUDA_PARAMS::CUDA_THREADS_PER_WARP;
+    const dim3 blocks( W, H, inC );
     const dim3 thrds( threads, 1, 1 );
 
     // Shared memory size.
     // The size of one kernel across all the input channels and 
     // additional space for saving the correlation results for
     // each thread in a block.
-    const int sizeSharedMemory = kernelSize * kernelSize * inC + threads;
+    const int sizeSharedMemory = threads;
 
     // CUDA context check.
     cudaError_t err = cudaGetLastError();
@@ -400,7 +541,6 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     AT_DISPATCH_FLOATING_TYPES( r0.type(), "corr_2d_backward_cuda_0", ( [&] {
         k_corr_2d_backward_0<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
             grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
-            r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             output0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             padding, kernelSize, maxDisplacement, strideK, strideD );
@@ -416,11 +556,10 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     }
 
     // Kernel launch.
-    AT_DISPATCH_FLOATING_TYPES( r0.type(), "corr_2d_backward_cuda_1", ( [&] {
+    AT_DISPATCH_FLOATING_TYPES( r1.type(), "corr_2d_backward_cuda_1", ( [&] {
         k_corr_2d_backward_1<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
             grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
-            r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             output1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             padding, kernelSize, maxDisplacement, strideK, strideD );
     } ) );
