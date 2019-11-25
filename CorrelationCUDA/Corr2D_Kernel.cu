@@ -234,24 +234,26 @@ __global__ void k_corr_2d_backward_0(
     yGMin = max( 0, yGMin );
     yGMax = min( gradH - 1, yGMax );
 
-    extern __shared__ scalar_t sum[]; // Should be the number of threads in this block.
+    extern __shared__ char sum[]; // Should be the number of threads in this block.
+
+    scalar_t* sumG = (scalar_t*)sum;
 
     for ( int b = 0; b < B; b++ )
     {
-        sum[gridOffset] = 0.0;
+        sumG[gridOffset] = 0.0;
 
         for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
         {
             int y1 = y0;
             int x1 = x0 - gridRadius * strideD + g * strideD; // Padded.
 
-            scalar_t value1 = input1[b][y1][x1][idxInC];
+            scalar_t value1 = input1[b][y1][x1][idxInC]; // Input1 is padded.
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sum[gridOffset] += grad[b][yG][xG][g] * value1;
+                    sumG[gridOffset] += grad[b][yG][xG][g] * value1;
                 }
             }
         }
@@ -263,7 +265,7 @@ __global__ void k_corr_2d_backward_0(
             scalar_t acc = 0;
             for ( int g = 0; g < blockDim.x; g++ )
             {
-                acc += sum[g];
+                acc += sumG[g];
             }
 
             output0[b][idxInC][y0 - padding][x0 - padding] = acc / nEles; 
@@ -297,23 +299,25 @@ __global__ void k_corr_2d_backward_1(
     const int kernelRadius = kernelSize / 2;
     const int nEles = kernelSize * kernelSize * input0.size(3); // Already re-ordered.
 
-    extern __shared__ scalar_t sum[]; // Should be the number of threads in this block.
+    extern __shared__ char sum[]; // Should be the number of threads in this block.
+
+    scalar_t* sumG = (scalar_t*)sum;
 
     for ( int b = 0; b < B; b++ )
     {
-        sum[gridOffset] = 0.0;
+        sumG[gridOffset] = 0.0;
 
         for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
         {
             int y0 = y1;
-            int x0 = x1 - gridRadius * strideD + g * strideD; // Padded.
+            int x0 = x1 + gridRadius * strideD - g * strideD; // Padded.
 
             // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
-            int xGMin = ( x1 - maxDisplacement - kernelRadius ) / strideK; // Padded.
-            int yGMin = ( y1                   - kernelRadius ) / strideK;
+            int xGMin = ( x0 - maxDisplacement - kernelRadius ) / strideK; // Padded.
+            int yGMin = ( y0                   - kernelRadius ) / strideK;
 
-            int xGMax = ( x1 - maxDisplacement + kernelRadius ) / strideK;
-            int yGMax = ( y1                   + kernelRadius ) / strideK;
+            int xGMax = ( x0 - maxDisplacement + kernelRadius ) / strideK;
+            int yGMax = ( y0                   + kernelRadius ) / strideK;
 
             if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
             {
@@ -326,13 +330,13 @@ __global__ void k_corr_2d_backward_1(
             yGMin = max( 0, yGMin );
             yGMax = min( gradH - 1, yGMax );
 
-            scalar_t value0 = input0[b][y1][x1][idxInC];
+            scalar_t value0 = input0[b][y0][x0][idxInC]; // input0 is padded.
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sum[gridOffset] += grad[b][yG][xG][g] * value0;
+                    sumG[gridOffset] += grad[b][yG][xG][g] * value0;
                 }
             }
         }
@@ -344,10 +348,10 @@ __global__ void k_corr_2d_backward_1(
             scalar_t acc = 0;
             for ( int g = 0; g < blockDim.x; g++ )
             {
-                acc += sum[g];
+                acc += sumG[g];
             }
 
-            output1[b][idxInC][y0 - padding][x0 - padding] = acc / nEles; 
+            output1[b][idxInC][y1 - padding][x1 - padding] = acc / nEles; 
         }
 
         __syncthreads();
@@ -498,15 +502,6 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     const int W = input0.size(3);
 
     const int inC = input0.size(1);
-
-    // kernelSize is assumed to be an odd number.
-    // NOTE: For normal situations, kernelRadius == padding.
-    const int kernelRadius = ( kernelSize - 1 ) / 2;
-
-    const int paddedInputH = H + padding*2;
-    const int paddedInputW = W + padding*2;
-    
-    const int gridRadius = maxDisplacement / strideD;
 
     // Output.
     auto output0 = torch::zeros_like(input0);
