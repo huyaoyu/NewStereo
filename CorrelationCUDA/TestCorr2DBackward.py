@@ -68,8 +68,12 @@ def test_backward(B=8, C=128, H=256, W=256, \
     out = Corr2D_ext.forward( t0, t1, \
         padding, kernelSize, maxDisplacement, strideK, strideD )
 
+    print("out.size() = {}. ".format( out.size() ))
+
     # Gradient.
-    grad = torch.autograd.Variable( torch.ones( (B, maxDisplacement+1, H, W) ).float().cuda() )
+    grad = torch.ones( (B, maxDisplacement+1, H, W-maxDisplacement) ).float().cuda()
+
+    print("grad.size() = {}. ".format(grad.size()))
 
     # Compute the autograd.
     Corr2D_ext.backward( grad, t0, t1, \
@@ -93,10 +97,18 @@ def test_backward_small( \
     out = Corr2D_ext.forward( t0, t1, \
         padding, kernelSize, maxDisplacement, strideK, strideD )
 
+    # Gradient.
+    grad = torch.ones( (B, maxDisplacement+1, H, W-maxDisplacement) ).float().cuda()
+
+    # Compute the autograd.
+    Corr2D_ext.backward( grad, t0, t1, \
+        padding, kernelSize, maxDisplacement, strideK, strideD )
+
 if __name__ == "__main__":
     print("Test shared memory. ")
 
     test_backward()
-    # print("===")
+    print("===")
+    test_backward_small()
     # test_backward_small()
 

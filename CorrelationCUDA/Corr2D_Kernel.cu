@@ -217,11 +217,11 @@ __global__ void k_corr_2d_backward_0(
     const int nEles = kernelSize * kernelSize * input1.size(3); // Already re-ordered.
     
     // The indices in grad that correspond to the kernels that cover the (x0, y0) position in input0.
-    int xGMin = ( x0 - maxDisplacement - kernelRadius ) / strideK; // Padded.
-    int yGMin = ( y0                   - kernelRadius ) / strideK;
+    int xGMin = ( x0 - maxDisplacement - 2*kernelRadius ) / strideK; // Padded.
+    int yGMin = ( y0                   - 2*kernelRadius ) / strideK;
 
-    int xGMax = ( x0 - maxDisplacement + kernelRadius ) / strideK;
-    int yGMax = ( y0                   + kernelRadius ) / strideK;
+    int xGMax = ( x0 - maxDisplacement ) / strideK;
+    int yGMax = ( y0                   ) / strideK;
 
     if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
     {
@@ -253,7 +253,7 @@ __global__ void k_corr_2d_backward_0(
             {
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sumG[gridOffset] += grad[b][yG][xG][g] * value1;
+                    sumG[gridOffset] += grad[b][g][yG][xG] * value1;
                 }
             }
         }
@@ -313,11 +313,11 @@ __global__ void k_corr_2d_backward_1(
             int x0 = x1 + gridRadius * strideD - g * strideD; // Padded.
 
             // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
-            int xGMin = ( x0 - maxDisplacement - kernelRadius ) / strideK; // Padded.
-            int yGMin = ( y0                   - kernelRadius ) / strideK;
+            int xGMin = ( x0 - maxDisplacement - 2*kernelRadius ) / strideK; // Padded.
+            int yGMin = ( y0                   - 2*kernelRadius ) / strideK;
 
-            int xGMax = ( x0 - maxDisplacement + kernelRadius ) / strideK;
-            int yGMax = ( y0                   + kernelRadius ) / strideK;
+            int xGMax = ( x0 - maxDisplacement ) / strideK;
+            int yGMax = ( y0                   ) / strideK;
 
             if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
             {
@@ -336,7 +336,7 @@ __global__ void k_corr_2d_backward_1(
             {
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sumG[gridOffset] += grad[b][yG][xG][g] * value0;
+                    sumG[gridOffset] += grad[b][g][yG][xG] * value0;
                 }
             }
         }
@@ -380,7 +380,7 @@ torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding )
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -396,7 +396,7 @@ torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding )
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -468,7 +468,7 @@ torch::Tensor corr_2d_forward_cuda(
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "corr_2d_forward_cuda: cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -486,7 +486,7 @@ torch::Tensor corr_2d_forward_cuda(
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "corr_2d_forward_cuda: cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -528,7 +528,7 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "corr_2d_forward_backward: cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -546,7 +546,7 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "corr_2d_backward_cuda: cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
@@ -564,7 +564,7 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     if ( cudaSuccess != err )
     {
         std::stringstream ss;
-        ss << "corr_2d_backward_cuda: cudaGetLastError() returns " << err;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
         throw std::runtime_error(ss.str());
     }
 
