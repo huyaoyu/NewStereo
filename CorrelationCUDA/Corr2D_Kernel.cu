@@ -217,11 +217,11 @@ __global__ void k_corr_2d_backward_0(
     const int nEles = kernelSize * kernelSize * input1.size(3); // Already re-ordered.
     
     // The indices in grad that correspond to the kernels that cover the (x0, y0) position in input0.
-    int xGMin = ( x0 - maxDisplacement - 2*kernelRadius ) / strideK; // Padded.
-    int yGMin = ( y0                   - 2*kernelRadius ) / strideK;
+    int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
+    int yGMin = ( y0                      - 2*kernelRadius ) / strideK;
 
-    int xGMax = ( x0 - maxDisplacement ) / strideK;
-    int yGMax = ( y0                   ) / strideK;
+    int xGMax = ( x0 - gridRadius*strideD ) / strideK;
+    int yGMax = ( y0                      ) / strideK;
 
     if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
     {
@@ -313,11 +313,11 @@ __global__ void k_corr_2d_backward_1(
             int x0 = x1 + gridRadius * strideD - g * strideD; // Padded.
 
             // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
-            int xGMin = ( x0 - maxDisplacement - 2*kernelRadius ) / strideK; // Padded.
-            int yGMin = ( y0                   - 2*kernelRadius ) / strideK;
+            int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
+            int yGMin = ( y0                      - 2*kernelRadius ) / strideK;
 
-            int xGMax = ( x0 - maxDisplacement ) / strideK;
-            int yGMax = ( y0                   ) / strideK;
+            int xGMax = ( x0 - gridRadius*strideD ) / strideK;
+            int yGMax = ( y0                      ) / strideK;
 
             if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
             {
@@ -421,10 +421,10 @@ torch::Tensor corr_2d_forward_cuda(
     const int paddedInputH = H + padding*2;
     const int paddedInputW = W + padding*2;
 
-    const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - kernelRadius * 2) / static_cast<float>(strideK) ) );
-    const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - kernelRadius * 2 - maxDisplacement) / static_cast<float>(strideK) ) );
-    
     const int gridRadius = maxDisplacement / strideD;
+
+    const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - kernelRadius * 2) / static_cast<float>(strideK) ) );
+    const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - kernelRadius * 2 - gridRadius*strideD) / static_cast<float>(strideK) ) );
     
     const int outC = gridRadius + 1; // The output channels
 
