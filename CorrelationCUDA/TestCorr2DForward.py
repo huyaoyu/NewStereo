@@ -1,5 +1,7 @@
 from __future__ import print_function
 
+import numpy as np
+
 import torch
 import Corr2D_ext
 
@@ -164,6 +166,44 @@ def test_forward(B=8, C=128, H=256, W=256, \
     print("res = {}. ".format(res))
     print("res - out[0, 0, 0, 1] = {}. ".format( res - out[0, 0, 0, 1] ))
 
+def test_forward_range( \
+        padding=1, kernelSize=3, maxDisplacement=64, strideK=1, strideD=1):
+
+    print("test_forward_range()")
+
+    a = np.array( range(256, 0, -1) )
+    b = np.stack( (a, a, a), axis=0 )
+
+    # Random tensor.
+    t0 = torch.from_numpy( b ).double().unsqueeze(0).unsqueeze(0)
+    t1 = t0.clone().detach()
+
+    t0 = t0.cuda()
+    t1 = t1.cuda()
+
+    # Apply funcion.
+    out = Corr2D_ext.forward( t0, t1, \
+        padding, kernelSize, maxDisplacement, strideK, strideD )
+
+    print("out[0, :, 0, 0] = \n{}".format(out[0, :, 0, 0]))
+
+    # Manually perform a correlation for out[0, -1, 0, 0].
+    res = single_point_correlation( t0, t1, \
+        padding, kernelSize, maxDisplacement, strideK, strideD, \
+        0, out.size()[1]-1, 0, 0 )
+
+    print("res = {}. ".format(res))
+    print("res - out[0, -1, 0, 0] = {}. ".format( res - out[0, -1, 0, 0] ))
+
+    # Manually perform a correlation for out[0, 0, 0, 1].
+    res = single_point_correlation( t0, t1, \
+        padding, kernelSize, maxDisplacement, strideK, strideD, \
+        0, 0, 0, 1 )
+
+    print("out[0, :, 0, 1] = \n{}".format( out[0, :, 0, 1] ))
+    print("res = {}. ".format(res))
+    print("res - out[0, 0, 0, 1] = {}. ".format( res - out[0, 0, 0, 1] ))
+
 def test_forward_small( \
         padding=1, kernelSize=3, maxDisplacement=1, strideK=1, strideD=1):
 
@@ -210,4 +250,6 @@ if __name__ == "__main__":
     test_forward()
     print("===")
     test_forward_small()
+    print("===")
+    test_forward_range()
 

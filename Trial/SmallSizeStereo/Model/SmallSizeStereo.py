@@ -63,17 +63,17 @@ class FeatureExtractorParams(object):
         self.preBranchIn    = self.resGrayOut + self.resGradOut
         self.preBranchOut   = self.preBranchIn
 
-        self.branch4In      = self.preBranchOut
-        self.branch4Out     = 32
-        self.branch16In     = self.preBranchOut
-        self.branch16Out    = 32
-        self.branch64In     = self.preBranchOut
-        self.branch64Out    = 32
-        self.concat         = self.preBranchOut + self.branch4Out + self.branch16Out + self.branch64Out
+        self.branch_1_In    = self.preBranchOut
+        self.branch_1_Out   = 32
+        self.branch_2_In    = self.preBranchOut
+        self.branch_2_Out   = 32
+        self.branch_3_In    = self.preBranchOut
+        self.branch_3_Out   = 32
+        self.concat         = self.preBranchOut + self.branch_1_Out + self.branch_2_Out + self.branch_3_Out
         self.afterBranchIn  = self.concat
         self.afterBranchOut = 64
 
-class FeatureExtractor(nn.Moduel):
+class FeatureExtractor(nn.Module):
     def __init__(self, params):
         super(FeatureExtractor, self).__init__()
 
@@ -91,9 +91,9 @@ class FeatureExtractor(nn.Moduel):
         self.preBranch = cm.ResPack( self.params.preBranchIn, self.params.preBranchOut, self.params.preBranchN, 3, self.params.preBranchS )
 
         # Branches.
-        self.branch4  = cm.ReceptiveBranch( self.params.branch4In,  self.params.branch4Out,   4 )
-        self.branch16 = cm.ReceptiveBranch( self.params.branch16In, self.params.branch16Out,  8 )
-        self.branch64 = cm.ReceptiveBranch( self.params.branch64In, self.params.branch64Out, 16 )
+        self.branch1 = cm.ReceptiveBranch( self.params.branch_1_In, self.params.branch_1_Out,  4 )
+        self.branch2 = cm.ReceptiveBranch( self.params.branch_2_In, self.params.branch_2_Out,  8 )
+        self.branch3 = cm.ReceptiveBranch( self.params.branch_3_In, self.params.branch_3_Out, 16 )
 
         # After branching conv.
         self.afterBranchConv = cm.Conv_W( self.params.afterBranchIn, self.params.afterBranchOut, 3 )
@@ -103,25 +103,25 @@ class FeatureExtractor(nn.Moduel):
         gray = self.resGray(gray)
 
         grad = self.firstConvGrad(grad)
-        grad = self.resGRad(grad)
+        grad = self.resGrad(grad)
 
         # Concatenate.
         x = torch.cat( ( gray, grad ), 1 )
 
-        b1  = self.preBranch(x)
-        # b1  = F.relu(b1, inplace=True)
-        b4  = self.branch4(b1)
-        b16 = self.branch16(b1)
-        b64 = self.branch64(b1)
+        b0 = self.preBranch(x)
+        # b0 = F.relu(b0, inplace=True)
+        b1 = self.branch1(b0)
+        b2 = self.branch2(b0)
+        b3 = self.branch3(b0)
 
-        hB1 = b1.size()[2]
-        wB1 = b1.size()[3]
+        hB0 = b0.size()[2]
+        wB0 = b0.size()[3]
 
-        b4  = F.interpolate( b4,  ( hB1, wB1 ), mode="bilinear", align_corners=False )
-        b16 = F.interpolate( b16, ( hB1, wB1 ), mode="bilinear", align_corners=False )
-        b64 = F.interpolate( b64, ( hB1, wB1 ), mode="bilinear", align_corners=False )
+        b1 = F.interpolate( b1, ( hB0, wB0 ), mode="bilinear", align_corners=False )
+        b2 = F.interpolate( b2, ( hB0, wB0 ), mode="bilinear", align_corners=False )
+        b3 = F.interpolate( b3, ( hB0, wB0 ), mode="bilinear", align_corners=False )
 
-        features = torch.cat( ( b1, b4, b16, b64 ), 1 )
+        features = torch.cat( ( b0, b1, b2, b3 ), 1 )
 
         features = self.afterBranchConv(features)
         # features = F.relu(features, inplace=True)
@@ -133,7 +133,7 @@ class DisparityRegression(nn.Module):
     def __init__(self, maxDisp, flagCPU=False):
         super(DisparityRegression, self).__init__()
         
-        dispSequence = np.reshape( np.array( range(maxDisp) ), [1, maxDisp, 1, 1] )
+        dispSequence = np.reshape( np.array( range(maxDisp, -1, -1) ), [1, maxDisp + 1, 1, 1] )
 
         self.disp = torch.from_numpy( dispSequence ).float()
         self.disp.requires_grad = False
@@ -143,13 +143,13 @@ class DisparityRegression(nn.Module):
 
     def forward(self, x):
         disp = self.disp.repeat( x.size()[0], 1, x.size()[2], x.size()[3] )
-        out  = torch.sum( x * disp, 1 )
+        out  = torch.sum( x * disp, 1 ).unsqueeze(1)
         
         return out
 
 class SmallSizeStereoParams(object):
     def __init__(self):
-        super(SmallSizeStereo, self).__init__()
+        super(SmallSizeStereoParams, self).__init__()
 
         self.featureExtractorParams = FeatureExtractorParams()
 
@@ -180,29 +180,29 @@ class SmallSizeStereo(nn.Module):
         # Disparity regression.
         self.dr = DisparityRegression(self.params.maxDisp, False)
 
-        # Initialization.
-        for m in self.modules():
-            # print(m)
-            if ( isinstance( m, (nn.Conv2d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1]
-                # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
-                m.weight.data.normal_(1/n, math.sqrt( 2.0 / n ))
-                m.weight.data = m.weight.data / m.in_channels
-            elif ( isinstance( m, (nn.Conv3d) ) ):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
-                # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
-                m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
-            elif ( isinstance( m, (nn.BatchNorm2d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.BatchNorm3d) ) ):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif ( isinstance( m, (nn.Linear) ) ):
-                m.weight.data.uniform_(0, 1)
-                m.bias.data.zero_()
-            # else:
-            #     raise Exception("Unexpected module type {}.".format(type(m)))
+        # # Initialization.
+        # for m in self.modules():
+        #     # print(m)
+        #     if ( isinstance( m, (nn.Conv2d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1]
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
+        #         m.weight.data.normal_(1/n, math.sqrt( 2.0 / n ))
+        #         m.weight.data = m.weight.data / m.in_channels
+        #     elif ( isinstance( m, (nn.Conv3d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
+        #         m.weight.data.uniform_(0, math.sqrt( 2.0 / n )/100)
+        #     elif ( isinstance( m, (nn.BatchNorm2d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.BatchNorm3d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.Linear) ) ):
+        #         m.weight.data.uniform_(0, 1)
+        #         m.bias.data.zero_()
+        #     # else:
+        #     #     raise Exception("Unexpected module type {}.".format(type(m)))
 
     def forward(self, gray0, gray1, grad0, grad1):
         # Feature extraction.

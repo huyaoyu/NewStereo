@@ -2,7 +2,7 @@ from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 setup(
-      name="Corr2D_ext",
+      name="Corr2DCUDA",
       ext_modules=[
             CUDAExtension("Corr2D_ext", [
                   'Corr2D.cpp',

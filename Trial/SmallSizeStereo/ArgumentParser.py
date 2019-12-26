@@ -34,7 +34,7 @@ parser.add_argument("--optimizer", type=str, default="adam", \
 parser.add_argument("--lr", type=float, default=0.0001, \
     help="Learning rate.")
 
-parser.add_argument("--max-disparity", type=int, default=512, \
+parser.add_argument("--max-disparity", type=int, default=64, \
     help="The maximum disparity without any scale factor.")
 
 parser.add_argument("--grayscale", action="store_true", default=False, \
@@ -53,10 +53,13 @@ parser.add_argument("--dl-num-workers", type=int, default=2, \
     help="The number of workers of the dataloader.")
 
 parser.add_argument("--dl-crop-train", type=str, default="0, 0", \
-    help="The the h-crop and w-crop size during training. \"0, 0\" for disable.")
+    help="The the h-crop (0) and w-crop (1) size during training. Set \"0, 0\" to disable.")
 
 parser.add_argument("--dl-crop-test", type=str, default="0, 0", \
-    help="The the h-crop and w-crop size during testing. \"0, 0\" for disable")
+    help="The the h-crop (0) and w-crop (1) size during testing. Set \"0, 0\" to disable")
+
+parser.add_argument("--dl-resize", type=str, default="0, 0", \
+    help="Resize the original image. Ordering is h, w. Set \"0, 0\" to disable.")
 
 parser.add_argument("--dl-drop-last", action="store_true", default=False, \
     help="The drop-last switch of the dataloader.")

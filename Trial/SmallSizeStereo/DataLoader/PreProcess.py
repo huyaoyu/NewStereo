@@ -66,6 +66,31 @@ class SobelXNoTensor(object):
     def __call__(self, x):
         return cv2.Sobel(x, cv2.CV_32FC1, 1, 0)
 
+class ResizeNoTensor(object):
+    def __init__(self, h, w):
+        super(ResizeNoTensor, self).__init__()
+        
+        self.h = h # The new height.
+        self.w = w # The new weight.
+
+    def __call__(self, x):
+        # Assuming an OpenCV image.
+        return cv2.resize(x, (self.w, self.h), interpolation=cv2.INTER_LINEAR)
+
+class ResizeDisparityNoTensor(object):
+    def __init__(self, h, w):
+        super(ResizeDisparityNoTensor, self).__init__()
+        
+        self.h = h # The new height.
+        self.w = w # The new weight.
+
+    def __call__(self, x):
+        # Assuming an OpenCV image with float data type.
+        # The factor.
+        f = self.w / x.shape[1]
+
+        return cv2.resize(x, (self.w, self.h), interpolation=cv2.INTER_LINEAR) * f
+
 class RandomCropSized_OCV(object):
     def __init__(self, h, w):
         super(RandomCropSized, self).__init__()

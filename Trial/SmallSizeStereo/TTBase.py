@@ -60,8 +60,11 @@ class TrainTestBase(object):
         self.dlShuffle      = True
         self.dlNumWorkers   = 2
         self.dlDropLast     = False
+        self.dlResize       = (0, 0) # (0, 0) for disable.
         self.dlCropTrain    = (0, 0) # (0, 0) for disable.
         self.dlCropTest     = (0, 0) # (0, 0) for disable.
+
+        self.maxDisparity = 64
 
         self.model     = None
         self.flagCPU   = False
@@ -177,7 +180,7 @@ class TrainTestBase(object):
             self.frame.logger.info("Data loader will use the pre-defined files to load the input data.")
 
     def set_data_loader_params(self, batchSize=2, shuffle=True, numWorkers=2, dropLast=False, \
-        cropTrain=(0, 0), cropTest=(0, 0)):
+        cropTrain=(0, 0), cropTest=(0, 0), newSize=(0, 0)):
         
         self.check_frame()
 
@@ -187,6 +190,7 @@ class TrainTestBase(object):
         self.dlDropLast   = dropLast
         self.dlCropTrain  = cropTrain
         self.dlCropTest   = cropTest
+        self.dlResize     = newSize
 
     def set_read_model(self, readModelString):
         self.check_frame()
@@ -235,6 +239,10 @@ class TrainTestBase(object):
 
     def switch_off_infer(self):
         self.flagInfer = False
+
+    def set_max_disparity(self, md):
+        assert md >= 1
+        self.maxDisparity = int(md)
 
     def init_base(self):
         # Make the subfolder for the test results.
@@ -291,11 +299,22 @@ class TrainTestBase(object):
                 Q         = Q[0:self.dataEntries]
 
         # Dataloader.
-        preprocessor = transforms.Compose( [ \
-            transforms.ToTensor(), \
-            PreProcess.SingleChannel() ] )
+        if ( self.dlResize[0] != 0 and self.dlResize[1] != 0 ):
+            preprocessor = transforms.Compose( [ \
+                PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
+                transforms.ToTensor(), \
+                PreProcess.SingleChannel() ] )
 
-        preprocessorDisp = transforms.Compose([transforms.ToTensor()])
+            preprocessorDisp = transforms.Compose( [ \
+                PreProcess.ResizeDisparityNoTensor(self.dlResize[0], self.dlResize[1]), \
+                transforms.ToTensor() ] )
+        else:
+            preprocessor = transforms.Compose( [ \
+                transforms.ToTensor(), \
+                PreProcess.SingleChannel() ] )
+
+            preprocessorDisp = transforms.Compose( [ \
+                transforms.ToTensor() ] )
 
         if ( False == self.flagInfer ):
             self.datasetTrain = DA.myImageFolder( imgTrainL, imgTrainR, dispTrain, True, \

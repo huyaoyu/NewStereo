@@ -149,7 +149,7 @@ __global__ void k_corr_2d_forward(
                 int chStart = ( j*kernelSize + i ) * inC;
                 for ( int c = idxC; c < inC; c += strideC )
                 {
-                    corrResults[idxC] += kernel0[ chStart + c ] * input0[idxB][y1+j][x1+i][c];
+                    corrResults[idxC] += kernel0[ chStart + c ] * input1[idxB][y1+j][x1+i][c];
                 }
             }
         }

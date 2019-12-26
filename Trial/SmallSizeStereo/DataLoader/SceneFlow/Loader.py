@@ -32,13 +32,19 @@ IMG_EXTENSIONS = [
     '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP',
 ]
 
+def test_file(file):
+    if ( not os.path.isfile(file) ):
+        raise Exception("%s does not exist. " % (file))
+
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
 def default_loader(path):
+    test_file(path)
     return Image.open(path).convert('RGB')
 
 def cv2_loader(path):
+    test_file(path)
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
 def convert_2_gray_gradx(img):
@@ -61,6 +67,7 @@ def cv2_loader_gray_gradx_float(path):
     return gray.astype(cv2.CV_32FC1), grad
 
 def disparity_loader(path):
+    test_file(path)
     return IO.readPFM(path)
 
 def generate_2D_Gaussian(n):
@@ -106,28 +113,6 @@ class myImageFolder(data.Dataset):
         self.cropSize = cropSize # (h, w)
 
         self.dispWhiteNoiseLevel = 0.05
-        self.gNoiseRounds = 4 # The number of Gaussian noise squares.
-
-        # Gaussian noise for the disparity.
-        if ( gNoiseWidth < 0 ):
-            # Disabled.
-            self.dispGaussianNoiseWidth = -1
-        elif ( gNoiseWidth == 0 ):
-            if ( 0 == self.cropSize[0] ):
-                raise Exception("Gaussian noise for the disparity could not applied with the default width on cropSize smaller than the 8x Gaussian window width. self.cropSize = {}, gNoiseWidth = {}. ".format( self.cropSize, gNoiseWidth ))
-            
-            # 1/4 the cropSize[0];
-            self.dispGaussianNoiseWidth = int(self.cropSize[0] / 8)
-        else:
-            if ( gNoiseWidth > self.cropSize[0] or gNoiseWidth > self.cropSize[1] ):
-                raise Exception("Gaussian noise for the disparity could not applied on cropSize smaller than the Gaussian window width. self.cropSize = {}, gNoiseWidth = {}. ".format( self.cropSize, gNoiseWidth ))
-
-            self.dispGaussianNoiseWidth = gNoiseWidth
-
-        if ( self.dispGaussianNoiseWidth > 0 ):
-            self.dispGaussianWindow = generate_2D_Gaussian( self.dispGaussianNoiseWidth )
-        else:
-            self.dispGaussianWindow = None
 
     def self_normalize(self, x):
         """
@@ -274,14 +259,15 @@ class myImageFolder(data.Dataset):
         dispL, scaleL = self.dploader(disp_L)
         dispL = np.ascontiguousarray(dispL, dtype=np.float32)
 
-        if self.training:  
-            # cv2 compatible crop.
-            imgL, imgR, dispL = \
-                self.random_crop_image_and_disparity( imgL, imgR, dispL )
-        else:
-            # cv2 compatible crop.
-            imgL, imgR, dispL = \
-                self.center_crop_image_and_disparity( imgL, imgR, dispL )
+        if ( self.cropSize[0] != 0 and self.cropSize[1] != 0 ):
+            if self.training:  
+                # cv2 compatible crop.
+                imgL, imgR, dispL = \
+                    self.random_crop_image_and_disparity( imgL, imgR, dispL )
+            else:
+                # cv2 compatible crop.
+                imgL, imgR, dispL = \
+                    self.center_crop_image_and_disparity( imgL, imgR, dispL )
 
         # Grayscale and gradient.
         imgL, gradL = convert_2_gray_gradx(imgL)

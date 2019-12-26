@@ -90,6 +90,9 @@ if __name__ == "__main__":
     cropTrain = ArgumentParser.convert_str_2_int_list( args.dl_crop_train )
     cropTest  = ArgumentParser.convert_str_2_int_list( args.dl_crop_test )
 
+    # Handle the resize settings.
+    newSize = ArgumentParser.convert_str_2_int_list( args.dl_resize )
+
     print_delimeter(title = "Before WorkFlow initialization." )
 
     try:
@@ -103,24 +106,13 @@ if __name__ == "__main__":
 
         if ( True == args.multi_gpus ):
             tt.enable_multi_GPUs()
-        
-        if ( True == args.cpu ):
-            tt.set_cpu_mode()
-
-        if ( True == args.sobel_x ):
-            tt.enable_Sobel_x()
-
-        if ( True == args.grayscale ):
-            tt.enable_grayscale()
-
-        # tt.flagGrayscale = args.grayscale
 
         # Set parameters.
         tt.set_optimizer_type(args.optimizer)
         tt.set_learning_rate(args.lr)
         tt.set_data_loader_params( \
             args.dl_batch_size, not args.dl_disable_shuffle, args.dl_num_workers, args.dl_drop_last, \
-            cropTrain=cropTrain, cropTest=cropTest )
+            cropTrain=cropTrain, cropTest=cropTest, newSize=newSize )
         tt.set_dataset_root_dir( args.data_root_dir, args.data_entries, args.data_file_list )
         tt.set_read_model( args.read_model )
         tt.set_read_optimizer( args.read_optimizer )

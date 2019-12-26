@@ -80,6 +80,7 @@ class TrainTestSSS(TrainTestBase):
     def init_model(self):
         
         self.params = SmallSizeStereoParams()
+        self.params.maxDisp = self.maxDisparity
         self.model = SmallSizeStereo(self.params)
 
         # Check if we have to read the model from filesystem.
@@ -142,7 +143,7 @@ class TrainTestSSS(TrainTestBase):
         # Forward.
         pred0 = self.model(imgL, imgR, gradL, gradR)
 
-        loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" )
+        loss = F.smooth_l1_loss( pred0, dispL[:,:,:,self.maxDisparity:], reduction="mean" )
         # loss = F.l1_loss( pred0, dispL, reduction="mean" )
         # loss = F.mse_loss( pred0, dispL ) + \
         #        F.mse_loss( pred1, dispL )
@@ -277,7 +278,7 @@ class TrainTestSSS(TrainTestBase):
         with torch.no_grad():
             # Forward.
             pred0 = self.model( imgL, imgR, gradL, gradR )
-            loss = F.smooth_l1_loss( pred0, dispL, reduction="mean" )
+            loss = F.smooth_l1_loss( pred0, dispL[:,:,:,self.maxDisparity:], reduction="mean" )
             # loss = torch.mean( torch.abs( pred0 - dispL ) )
 
         self.countTest += 1
@@ -289,8 +290,7 @@ class TrainTestSSS(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        self.draw_test_results( identifier, pred0, dispL, dispLH, imgL )
-        # self.draw_test_results( identifier, pred0, dispL, pred0, imgL )
+        self.draw_test_results( identifier, pred0, dispL, imgL, imgR )
         self.save_test_disp( identifier, pred0 )
 
         # Test the existance of an AccumulatedValue object.
