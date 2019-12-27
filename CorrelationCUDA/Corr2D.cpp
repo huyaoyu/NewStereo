@@ -4,6 +4,7 @@
 
 // CUDA test interfaces.
 torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding );
+torch::Tensor create_L(torch::Tensor r, const int kernelSize);
 
 // CUDA module interfaces.
 torch::Tensor corr_2d_forward_cuda( 
@@ -24,6 +25,13 @@ torch::Tensor test_from_BCHW_2_BHWC_padded(torch::Tensor input, int padding)
     CHECK_INPUT(input);
 
     return from_BCHW_2_BHWC_padded_cuda(input, padding);
+}
+
+torch::Tensor test_create_L(torch::Tensor r, const int kernelSize)
+{
+    CHECK_INPUT(r);
+
+    return create_L(r, kernelSize);
 }
 
 torch::Tensor corr_2d_forward( 
@@ -50,6 +58,7 @@ std::vector<torch::Tensor> corr_2d_backward( torch::Tensor grad, torch::Tensor i
 PYBIND11_MODULE( TORCH_EXTENSION_NAME, m )
 {
     m.def("test_from_BCHW_2_BHWC_padded", &test_from_BCHW_2_BHWC_padded, "TF: test_from_BCHW_2_BHWC_padded. ");
+    m.def("test_create_L", &test_create_L, "TF: test_create_L. ");
     m.def("forward", &corr_2d_forward, "Corr2D forward, CUDA version. ");
     m.def("backward", &corr_2d_backward, "Corr2D backward, CUDA version. ");
 }

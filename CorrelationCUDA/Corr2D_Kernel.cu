@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 
 #include <iostream>
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -17,6 +18,11 @@ namespace CUDA_PARAMS
 {
 const int CUDA_MAX_THREADS_PER_BLOCK = 1024;
 const int CUDA_THREADS_PER_WARP = 32;   
+}
+
+namespace CORR_PARAMS
+{
+const double CORR_SMALL = 1e-6;
 }
 
 // PTA for PackedTensorAccessor
@@ -73,6 +79,100 @@ __global__ void k_from_BCHW_2_BHWC_padded(
             }
         }
     }
+}
+
+/*!
+ * The input tensor is already arranged to have its channel being the first dimension.
+ * 
+ * \param kernelSize The kernel size, whole size. Should be a positive odd number.
+ */
+template <typename scalar_t>
+__global__ void k_kernel_norm( 
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input,
+    torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
+    int kernelSize)
+{
+    const int idxB = blockIdx.z;
+
+    const int inC = input.size(3);
+
+    const int HP  = input.size(1);
+    const int WP  = input.size(2);
+
+    // Kernel.
+    const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
+
+    // Shared memory.
+    extern __shared__ char sharedMemory[];
+    scalar_t* sMem = (scalar_t*)sharedMemory;
+
+    // The index for loading data to the shared memory.
+    const int smHeight = blockDim.y + kernelRadius*2;
+    const int smWidth  = blockDim.x + kernelRadius*2;
+    const int smSize   = smHeight * smWidth;
+
+    // Use all the threads in this block linearly.
+    const int smStride = blockDim.y * blockDim.x;
+
+    // The upper-left corner of the shared memory region in the input tensor.
+    const int smX0 = blockIdx.x * blockDim.x + kernelRadius - kernelRadius;
+    const int smY0 = blockIdx.y * blockDim.y + kernelRadius - kernelRadius;
+
+    // Loop over all location in the shared memory.
+    for ( int smIdx = threadIdx.y * blockDim.x + threadIdx.x; smIdx < smSize; smIdx += smStride )
+    {
+        // Clear the value in the shared memory.
+        sMem[smIdx] = static_cast<scalar_t>( 0.0 );
+
+        // The index in the input tensor.
+        int smY = smIdx / smWidth + smY0;
+        int smX = smIdx % smWidth + smX0;
+
+        // Load one channel of input into the shared memory.
+        if ( smX < WP && smY < HP )
+        {
+            scalar_t cData = static_cast<scalar_t>( 0.0 );
+
+            for ( int c = 0; c < inC; c += 1 )
+            {
+                cData = input[idxB][smY][smX][c];
+                sMem[ smIdx ] += cData * cData;
+            }
+        }
+    }
+
+    __syncthreads();
+
+    // The index in the shared memory of the current thread.
+    const int smShiftX = threadIdx.x + kernelRadius;
+    const int smShiftY = threadIdx.y + kernelRadius;
+
+    // The location in the input tensor of the current thread.
+    const int x = blockIdx.x * blockDim.x + threadIdx.x + kernelRadius;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y + kernelRadius;
+
+    // Compute the kernel norm.
+    if ( x < WP - kernelRadius && y < HP - kernelRadius )
+    {
+        scalar_t acc = static_cast<scalar_t>( 0.0 );
+
+        for ( int j = -kernelRadius; j <= kernelRadius; ++j )
+        {
+            for ( int i = -kernelRadius; i <= kernelRadius; ++i )
+            {
+                acc += sMem[ ( smShiftY + j )*smWidth + smShiftX + i ];
+            }
+        }
+
+        // Re-use acc.
+        acc = 1.0 / std::sqrt( acc );
+        acc = acc < CORR_PARAMS::CORR_SMALL ? static_cast<scalar_t>( acc + CORR_PARAMS::CORR_SMALL ) : acc;
+
+        // Save the value to the output tensor.
+        output[idxB][0][y][x] = acc;
+    }
+
+    __syncthreads();
 }
 
 /*!
@@ -403,6 +503,59 @@ torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding )
     return output;
 }
 
+torch::Tensor create_L(torch::Tensor r, const int kernelSize)
+{
+    const int B = r.size(0);
+    const int H = r.size(1);
+    const int W = r.size(2);
+
+    // r is the rearranged tensor with its channel being the first dimension.
+    auto L = torch::zeros({B, 1, H, W}, r.options());
+
+    // Kernel.
+    const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be an odd number.
+
+    // Kernel launch specification.
+    const int threadsX = 16;
+    const int threadsY = 16;
+    const dim3 blocks( 
+        ( W - kernelRadius*2 + threadsX - 1 ) / threadsX, 
+        ( H - kernelRadius*2 + threadsY - 1 ) / threadsY, 
+        B );
+    const dim3 thrds( threadsX, threadsY, 1 );
+
+    // Shared memory.
+    // Shared memory should hold data for all the threads of a block and
+    // the data bounding this block with the thickness of kernelRadius.
+    const int sizeSharedMemory = ( threadsX + kernelRadius*2 ) * ( threadsY + kernelRadius*2 );
+
+    cudaError_t err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        std::stringstream ss;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
+        throw std::runtime_error(ss.str());
+    }
+
+    // Kernel launch.
+    AT_DISPATCH_FLOATING_TYPES( r.type(), "create_L", ( [&] {
+        k_kernel_norm<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
+            r.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            kernelSize );
+    } ) );
+
+    err = cudaGetLastError();
+    if ( cudaSuccess != err )
+    {
+        std::stringstream ss;
+        ss << __FILE__ << ": "<< __LINE__ << ": cudaGetLastError() returns " << err;
+        throw std::runtime_error(ss.str());
+    }
+
+    return L;
+}
+
 torch::Tensor corr_2d_forward_cuda( 
     torch::Tensor input0, torch::Tensor input1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
@@ -431,6 +584,10 @@ torch::Tensor corr_2d_forward_cuda(
     // Rearrange the inputs.
     auto r0 = from_BCHW_2_BHWC_padded_cuda(input0, padding);
     auto r1 = from_BCHW_2_BHWC_padded_cuda(input1, padding);
+
+    // Create two new tensors for the L values.
+    auto L0 = create_L(r0, kernelSize);
+    auto L1 = create_L(r1, kernelSize);
 
     // // Debug.
     // SHOW_VARIABLE(B);
