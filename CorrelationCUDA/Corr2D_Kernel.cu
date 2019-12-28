@@ -186,6 +186,8 @@ template <typename scalar_t>
 __global__ void k_corr_2d_forward( 
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L1,
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD)
 {
@@ -212,7 +214,7 @@ __global__ void k_corr_2d_forward(
 
     // Shared memory.
     extern __shared__ char sharedMemory[];
-    scalar_t* kernel0 = (scalar_t*)sharedMemory;
+    scalar_t* kernel0     = (scalar_t*)sharedMemory;
     scalar_t* corrResults = kernel0 + nElements;
 
     // The upper-left corner of the current kernel.
@@ -232,6 +234,8 @@ __global__ void k_corr_2d_forward(
             }
         }
     }
+
+    const scalar_t KL0 = L0[idxB][0][y0 + kernelRadius][x0 + kernelRadius];
 
     __syncthreads();
 
@@ -258,6 +262,7 @@ __global__ void k_corr_2d_forward(
 
         if ( 0 == idxC )
         {
+            scalar_t KL1 = L1[idxB][0][y1 + kernelRadius][x1 + kernelRadius];
             scalar_t kernelSum = 0.0;
 
             for ( int i = 0; i < blockDim.x; i++ )
@@ -265,7 +270,8 @@ __global__ void k_corr_2d_forward(
                 kernelSum += corrResults[i];
             }
 
-            output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
+            // output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
+            output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum * KL0 * KL1;
         }
     }
 
@@ -615,10 +621,11 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
     const dim3 thrds( threads, 1, 1 );
 
     // Shared memory size.
-    // The size of one kernel across all the input channels and 
+    // The size of one kernel across all the input channels, and 
     // additional space for saving the correlation results for
     // each thread in a block.
-    const int sizeSharedMemory = kernelSize * kernelSize * inC + threads;
+    const int sizeSharedMemory = 
+        kernelSize * kernelSize * inC + threads;
 
     // CUDA context check.
     cudaError_t err = cudaGetLastError();
@@ -634,6 +641,8 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
         k_corr_2d_forward<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
             r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             output.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             padding, kernelSize, maxDisplacement, strideK, strideD );
     } ) );
