@@ -7,7 +7,7 @@ torch::Tensor from_BCHW_2_BHWC_padded_cuda( torch::Tensor input, int padding );
 torch::Tensor create_L(torch::Tensor r, const int kernelSize);
 
 // CUDA module interfaces.
-torch::Tensor corr_2d_forward_cuda( 
+std::vector<torch::Tensor> corr_2d_forward_cuda( 
     torch::Tensor input0, torch::Tensor input1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD );
 
@@ -34,7 +34,7 @@ torch::Tensor test_create_L(torch::Tensor r, const int kernelSize)
     return create_L(r, kernelSize);
 }
 
-torch::Tensor corr_2d_forward( 
+std::vector<torch::Tensor> corr_2d_forward( 
     torch::Tensor input0, torch::Tensor input1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {

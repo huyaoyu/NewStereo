@@ -165,11 +165,11 @@ __global__ void k_kernel_norm(
         }
 
         // Re-use acc.
-        acc = 1.0 / std::sqrt( acc );
+        acc = std::sqrt( acc );
         acc = acc < CORR_PARAMS::CORR_SMALL ? static_cast<scalar_t>( acc + CORR_PARAMS::CORR_SMALL ) : acc;
 
         // Save the value to the output tensor.
-        output[idxB][0][y][x] = acc;
+        output[idxB][0][y][x] = 1.0 / acc;
     }
 
     __syncthreads();
@@ -556,7 +556,7 @@ torch::Tensor create_L(torch::Tensor r, const int kernelSize)
     return L;
 }
 
-torch::Tensor corr_2d_forward_cuda( 
+std::vector<torch::Tensor> corr_2d_forward_cuda( 
     torch::Tensor input0, torch::Tensor input1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
@@ -647,7 +647,7 @@ torch::Tensor corr_2d_forward_cuda(
         throw std::runtime_error(ss.str());
     }
 
-    return output;
+    return { output, L0, L1 };
 }
 
 std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor input0, torch::Tensor input1, 
