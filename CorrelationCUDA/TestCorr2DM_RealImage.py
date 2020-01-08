@@ -34,6 +34,18 @@ def test_two_tensors(t0, t1, \
 
     return out
 
+def zero_normalized_cross_correlation(x0, x1):
+    x0 = x0.reshape((1,-1))
+    x1 = x1.reshape((-1,1))
+
+    n0 = np.linalg.norm(x0)
+    n1 = np.linalg.norm(x1)
+
+    nx0 = x0 / n0
+    nx1 = x1 / n1
+
+    return nx0.dot(nx1)
+
 if __name__ == "__main__":
     # torch.autograd.gradcheck()
     # test_gradcheck()
@@ -48,6 +60,15 @@ if __name__ == "__main__":
 
     a = np.array( range(256, 0, -1) )
     b = np.stack( (a, a, a), axis=0 )
+
+    b_0 = b[0:3, 0:3]
+    b_1 = b[0:3, 63:66]
+
+    print("b[0:3, 0:3] = \n{}".format( b_0 ))
+    print("b[0:3, 63:66] = \n{}".format( b_1 ))
+
+    zncc = zero_normalized_cross_correlation(b_0, b_1)
+    print("zncc = \n{}".format(zncc))
 
     t0 = torch.from_numpy( b ).double().unsqueeze(0).unsqueeze(0)
     t1 = t0.clone()
@@ -65,6 +86,8 @@ if __name__ == "__main__":
     costCPU = cost.detach().cpu().numpy()
 
     # import ipdb; ipdb.set_trace()
+
+    print(costCPU[0, :, 1, 0])
 
     plt.plot( costCPU[0, :, 1, 0], "-*" )
     plt.show()

@@ -58,6 +58,29 @@ class SingleChannel(object):
     def __call__(self, x):
         return x[0].view( ( 1, x.size()[1], x.size()[2] ) )
 
+class NormalizeRGB_OCV(object):
+    def __call__(self, x):
+        """This is the OpenCV version. The order of the color channle is BGR. The order of dimension is HWC."""
+
+        x = x.clone()
+
+        # It is assumed that the data type of x is already floating point number.
+
+        x[:, :, 0] = ( x[:, :, 0] - __imagenet_stats["mean"][2] ) / __imagenet_stats["std"][2]
+        x[:, :, 1] = ( x[:, :, 1] - __imagenet_stats["mean"][1] ) / __imagenet_stats["std"][1]
+        x[:, :, 2] = ( x[:, :, 2] - __imagenet_stats["mean"][0] ) / __imagenet_stats["std"][0]
+
+        return x
+
+class NormalizeGray_OCV_naive(object):
+    def __init__(self, s):
+        super(NormalizeGray_OCV_naive, self).__init__()
+        self.s = s
+
+    def __call__(self, x):
+        x = x / self.s - 0.5
+        return x.astype(np.float32)
+
 class GrayscaleNoTensor(object):
     def __call__(self, x):
         return cv2.cvtColor( x, cv2.COLOR_BGR2GRAY )
@@ -123,7 +146,7 @@ class RandomCropSized_OCV(object):
 
         return x[ch:ch+self.h, cw:cw+self.w]
 
-class NormalizeSelf_OCV(object):
+class NormalizeSelf_OCV_01(object):
     def __call__(self, x):
         """
         x is an OpenCV mat.
@@ -133,6 +156,33 @@ class NormalizeSelf_OCV(object):
 
         x = x - x.min()
         x = x / x.max()
+
+        return x
+
+class NormalizeSelf_OCV(object):
+    def __call__(self, x):
+        """
+        x is an OpenCV mat.
+        This functiion perform normalization for individual channels.
+
+        The normalized mat will have its values ranging from -1 to 1.
+        """
+
+        if ( 2 == len(x.shape) ):
+            # Single channel mat.
+            s = x.std()
+            x = x - x.mean()
+            x = x / s
+        elif ( 3 == len(x.shape) ):
+            # 3-channel mat.
+            x = x.clone()
+
+            for i in range(3):
+                s = x[:, :, i].std()
+                x[:, :, i] = x[:, :, i] - x[:, :, i].mean()
+                x[:, :, i] = x[:, :, i] / s
+        else:
+            raise Exception("len(x.shape) = %d. ".format(len(x.shape)))
 
         return x
 

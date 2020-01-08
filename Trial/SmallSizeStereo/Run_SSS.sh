@@ -2,7 +2,7 @@
 
 echo "Run Run_SSS.py"
 
-python Run_SSS.py --working-dir ./WD/Debug \
+python Run_SSS.py --working-dir ./WD/ZeroNormalized \
     --grayscale \
     --dl-batch-size 2 \
     --dl-num-workers 2 \
@@ -13,7 +13,7 @@ python Run_SSS.py --working-dir ./WD/Debug \
     --data-file-list \
     --train-epochs 1000 \
     --test-loops 100 \
-    --lr 0.0001
+    --lr 0.001
     # --read-model SSS.pkl
 
 echo "Done with Run_SSS.sh"

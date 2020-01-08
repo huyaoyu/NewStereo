@@ -25,15 +25,16 @@ class Corr2DF(torch.autograd.Function):
 
         out = Corr2D_ext.forward(x0, x1, padding, kernelSize, maxDisplacement, strideK, strideD)
 
-        ctx.save_for_backward(x0, x1, out[1], out[2])
+        ctx.save_for_backward(x0, x1, out[0], out[1], out[2])
 
         return out[0]
 
     @staticmethod
     def backward(ctx, grad):
-        x0, x1, L0, L1 = ctx.saved_tensors
+        x0, x1, C, L0, L1 = ctx.saved_tensors
 
-        output = Corr2D_ext.backward( grad, x0, x1, ctx.padding, ctx.kernelSize, ctx.maxDisplacement, ctx.strideK, ctx.strideD )
+        output = Corr2D_ext.backward( grad, x0, x1, C, L0, L1, 
+            ctx.padding, ctx.kernelSize, ctx.maxDisplacement, ctx.strideK, ctx.strideD )
 
         return output[0], output[1], None, None, None, None, None
 

@@ -12,6 +12,7 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD );
 
 std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor input0, torch::Tensor input1, 
+    torch::Tensor cr, torch::Tensor L0, torch::Tensor L1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD );
 
 // C++ interfaces.
@@ -45,14 +46,19 @@ std::vector<torch::Tensor> corr_2d_forward(
         padding, kernelSize, maxDisplacement, strideK, strideD );
 }
 
-std::vector<torch::Tensor> corr_2d_backward( torch::Tensor grad, torch::Tensor input0, torch::Tensor input1, 
+std::vector<torch::Tensor> corr_2d_backward( torch::Tensor grad,  
+    torch::Tensor input0, torch::Tensor input1, 
+    torch::Tensor cr, torch::Tensor L0, torch::Tensor L1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
     CHECK_INPUT(grad);
     CHECK_INPUT(input0);
     CHECK_INPUT(input1);
+    CHECK_INPUT(cr);
+    CHECK_INPUT(L0);
+    CHECK_INPUT(L1);
 
-    return corr_2d_backward_cuda(grad, input0, input1, padding, kernelSize, maxDisplacement, strideK, strideD);
+    return corr_2d_backward_cuda(grad, input0, input1, cr, L0, L1, padding, kernelSize, maxDisplacement, strideK, strideD);
 }
 
 PYBIND11_MODULE( TORCH_EXTENSION_NAME, m )

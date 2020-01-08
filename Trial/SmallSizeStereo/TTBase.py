@@ -302,6 +302,7 @@ class TrainTestBase(object):
         if ( self.dlResize[0] != 0 and self.dlResize[1] != 0 ):
             preprocessor = transforms.Compose( [ \
                 PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
+                PreProcess.NormalizeGray_OCV_naive(255), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
 
@@ -310,6 +311,7 @@ class TrainTestBase(object):
                 transforms.ToTensor() ] )
         else:
             preprocessor = transforms.Compose( [ \
+                PreProcess.NormalizeGray_OCV_naive(255), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
 

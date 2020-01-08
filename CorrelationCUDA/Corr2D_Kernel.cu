@@ -301,7 +301,11 @@ __global__ void k_corr_2d_forward(
 template <typename scalar_t> 
 __global__ void k_corr_2d_backward_0(
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> cr,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L1,
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output0,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
@@ -348,6 +352,8 @@ __global__ void k_corr_2d_backward_0(
     {
         sumG[gridOffset] = 0.0;
 
+        scalar_t value0 = input0[b][y0][x0][idxInC];
+
         for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
         {
             int y1 = y0;
@@ -357,9 +363,21 @@ __global__ void k_corr_2d_backward_0(
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
+                int yL0 = yG * strideK + kernelRadius;
+                int yL1 = yL0;
+
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sumG[gridOffset] += grad[b][g][yG][xG] * value1;
+                    int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
+                    int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
+
+                    scalar_t crKernel = cr[b][g][yG][xG];
+                    scalar_t L0Kernel = L0[b][0][yL0][xL0];
+                    scalar_t L1Kernel = L1[b][0][yL1][xL1];
+
+                    // sumG[gridOffset] += grad[b][g][yG][xG] * value1;
+                    sumG[gridOffset] += grad[b][g][yG][xG] * 
+                        ( -L0Kernel * L0Kernel * value0 * crKernel + L0Kernel * L1Kernel * value1 );
                 }
             }
         }
@@ -374,7 +392,8 @@ __global__ void k_corr_2d_backward_0(
                 acc += sumG[g];
             }
 
-            output0[b][idxInC][y0 - padding][x0 - padding] = acc / nEles; 
+            // output0[b][idxInC][y0 - padding][x0 - padding] = acc / nEles;
+            output0[b][idxInC][y0 - padding][x0 - padding] = acc;
         }
 
         __syncthreads();
@@ -385,6 +404,10 @@ template <typename scalar_t>
 __global__ void k_corr_2d_backward_1(
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> grad,
     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> cr,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L1,
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output1,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
@@ -413,6 +436,8 @@ __global__ void k_corr_2d_backward_1(
     {
         sumG[gridOffset] = 0.0;
 
+        scalar_t value1 = input1[b][y1][x1][idxInC]; // Padded.
+
         for ( int g = gridOffset; g < gridSize; g += gridIdxStride )
         {
             int y0 = y1;
@@ -440,9 +465,21 @@ __global__ void k_corr_2d_backward_1(
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
+                int yL0 = yG * strideK + kernelRadius;
+                int yL1 = yL0;
+
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    sumG[gridOffset] += grad[b][g][yG][xG] * value0;
+                    int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
+                    int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
+
+                    scalar_t crKernel = cr[b][g][yG][xG];
+                    scalar_t L0Kernel = L0[b][0][yL0][xL0];
+                    scalar_t L1Kernel = L1[b][0][yL1][xL1];
+
+                    // sumG[gridOffset] += grad[b][g][yG][xG] * value0;
+                    sumG[gridOffset] += grad[b][g][yG][xG] * 
+                        ( -L1Kernel * L1Kernel * value1 * crKernel + L0Kernel * L1Kernel * value0 );
                 }
             }
         }
@@ -457,7 +494,8 @@ __global__ void k_corr_2d_backward_1(
                 acc += sumG[g];
             }
 
-            output1[b][idxInC][y1 - padding][x1 - padding] = acc / nEles; 
+            // output1[b][idxInC][y1 - padding][x1 - padding] = acc / nEles;
+            output1[b][idxInC][y1 - padding][x1 - padding] = acc;
         }
 
         __syncthreads();
@@ -660,6 +698,7 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
 }
 
 std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Tensor input0, torch::Tensor input1, 
+    torch::Tensor cr, torch::Tensor L0, torch::Tensor L1, 
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
     // Get the dimensions of the original input.
@@ -702,7 +741,11 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
     AT_DISPATCH_FLOATING_TYPES( r0.type(), "corr_2d_backward_cuda_0", ( [&] {
         k_corr_2d_backward_0<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
             grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            cr.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             output0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             padding, kernelSize, maxDisplacement, strideK, strideD );
     } ) );
@@ -721,6 +764,10 @@ std::vector<torch::Tensor> corr_2d_backward_cuda( torch::Tensor grad, torch::Ten
         k_corr_2d_backward_1<scalar_t><<<blocks, thrds, sizeSharedMemory*sizeof(scalar_t)>>>( 
             grad.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             r0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            r1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            cr.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L0.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
+            L1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             output1.packed_accessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE>(),
             padding, kernelSize, maxDisplacement, strideK, strideD );
     } ) );

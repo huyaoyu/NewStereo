@@ -47,6 +47,10 @@ def cv2_loader(path):
     test_file(path)
     return cv2.imread(path, cv2.IMREAD_UNCHANGED)
 
+def cv2_loader_float32(path):
+    test_file(path)
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED).astype(np.float32)
+
 def convert_2_gray_gradx(img):
     # Grayscale.
     if ( 3 == len(img.shape) ):
