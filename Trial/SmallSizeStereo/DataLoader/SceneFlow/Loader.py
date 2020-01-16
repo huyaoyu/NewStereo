@@ -102,7 +102,7 @@ def generate_2D_Gaussian(n):
 class myImageFolder(data.Dataset):
     def __init__(self, left, right, left_disparity, training, \
         loader=cv2_loader, dploader= disparity_loader, \
-        preprocessorImg=None, preprocessorDisp=None, \
+        preprocessorImg=None, preprocessorGrad=None, preprocessorDisp=None, \
         cropSize=(0,0), gNoiseWidth=-1):
  
         self.left = left
@@ -113,6 +113,7 @@ class myImageFolder(data.Dataset):
         self.training = training
 
         self.preprocessorImg  = preprocessorImg
+        self.preprocessorGrad = preprocessorGrad
         self.preprocessorDisp = preprocessorDisp
         self.cropSize = cropSize # (h, w)
 
@@ -279,10 +280,12 @@ class myImageFolder(data.Dataset):
 
         # Image pre-processing.
         if ( self.preprocessorImg is not None ):
-            imgL  = self.preprocessorImg(imgL)
-            imgR  = self.preprocessorImg(imgR)
-            gradL = self.preprocessorImg(gradL)
-            gradR = self.preprocessorImg(gradR)
+            imgL  = self.preprocessorImg(imgL.astype(np.float32))
+            imgR  = self.preprocessorImg(imgR.astype(np.float32))
+        
+        if ( self.preprocessorGrad is not None ):
+            gradL = self.preprocessorGrad(gradL)
+            gradR = self.preprocessorGrad(gradR)
         
         # Disparity pre-processing.
         if ( self.preprocessorDisp is not None ):

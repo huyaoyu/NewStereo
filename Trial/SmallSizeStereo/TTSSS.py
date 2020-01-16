@@ -13,7 +13,7 @@ import torch.optim as optim
 from workflow import WorkFlow, TorchFlow
 
 from TTBase import TrainTestBase
-from Model.SmallSizeStereo import SmallSizeStereo, SmallSizeStereoParams
+from Model.SmallSizeStereo import SmallSizeStereo, SmallSizeStereoParams, SmallSizeStereo_NoCorr
 
 from CommonPython.PointCloud.PLYHelper import write_PLY
 
@@ -80,7 +80,11 @@ class TrainTestSSS(TrainTestBase):
     def init_model(self):
         
         self.params = SmallSizeStereoParams()
+        # self.params.corrKernelSize = 1
+        # self.params.corrPadding    = 0
+
         self.params.maxDisp = self.maxDisparity
+        # self.model = SmallSizeStereo_NoCorr(self.params)
         self.model = SmallSizeStereo(self.params)
 
         # Check if we have to read the model from filesystem.
@@ -142,6 +146,8 @@ class TrainTestSSS(TrainTestBase):
 
         # Forward.
         pred0 = self.model(imgL, imgR, gradL, gradR)
+
+        # import ipdb; ipdb.set_trace()
 
         loss = F.smooth_l1_loss( pred0, dispL[:,:,:,self.maxDisparity:], reduction="mean" )
         # loss = F.l1_loss( pred0, dispL, reduction="mean" )

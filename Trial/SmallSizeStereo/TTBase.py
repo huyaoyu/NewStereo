@@ -302,7 +302,13 @@ class TrainTestBase(object):
         if ( self.dlResize[0] != 0 and self.dlResize[1] != 0 ):
             preprocessor = transforms.Compose( [ \
                 PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
-                PreProcess.NormalizeGray_OCV_naive(255), \
+                PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
+                transforms.ToTensor(), \
+                PreProcess.SingleChannel() ] )
+
+            preprocessorGrad = transforms.Compose( [ \
+                PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
+                PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
 
@@ -311,7 +317,12 @@ class TrainTestBase(object):
                 transforms.ToTensor() ] )
         else:
             preprocessor = transforms.Compose( [ \
-                PreProcess.NormalizeGray_OCV_naive(255), \
+                PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
+                transforms.ToTensor(), \
+                PreProcess.SingleChannel() ] )
+            
+            preprocessorGrad = transforms.Compose( [ \
+                PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
 
@@ -320,9 +331,9 @@ class TrainTestBase(object):
 
         if ( False == self.flagInfer ):
             self.datasetTrain = DA.myImageFolder( imgTrainL, imgTrainR, dispTrain, True, \
-                preprocessorImg=preprocessor, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTrain, gNoiseWidth=0 )
+                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTrain, gNoiseWidth=0 )
             self.datasetTest  = DA.myImageFolder( imgTestL,  imgTestR,  dispTest, False, \
-                preprocessorImg=preprocessor, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTest, gNoiseWidth=0 )
+                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTest, gNoiseWidth=0 )
 
             self.imgTrainLoader = torch.utils.data.DataLoader( \
                 self.datasetTrain, \

@@ -4,6 +4,8 @@
 *.bmp
 *.pfm
 *.dat
+*.npy
+*.pp3
 Build/
 build/
 Data/

@@ -73,12 +73,13 @@ class NormalizeRGB_OCV(object):
         return x
 
 class NormalizeGray_OCV_naive(object):
-    def __init__(self, s):
+    def __init__(self, s, a):
         super(NormalizeGray_OCV_naive, self).__init__()
         self.s = s
+        self.a = a
 
     def __call__(self, x):
-        x = x / self.s - 0.5
+        x = x / self.s - self.a
         return x.astype(np.float32)
 
 class GrayscaleNoTensor(object):
@@ -94,7 +95,7 @@ class ResizeNoTensor(object):
         super(ResizeNoTensor, self).__init__()
         
         self.h = h # The new height.
-        self.w = w # The new weight.
+        self.w = w # The new width.
 
     def __call__(self, x):
         # Assuming an OpenCV image.
@@ -105,7 +106,7 @@ class ResizeDisparityNoTensor(object):
         super(ResizeDisparityNoTensor, self).__init__()
         
         self.h = h # The new height.
-        self.w = w # The new weight.
+        self.w = w # The new width.
 
     def __call__(self, x):
         # Assuming an OpenCV image with float data type.
