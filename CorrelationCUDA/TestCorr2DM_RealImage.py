@@ -112,6 +112,7 @@ def test_real_image_shift(shift=0):
     plt.show()
 
 if __name__ == "__main__":
+    torch.cuda.set_device(3)
     test_real_image_shift(0)
     
     # torch.autograd.gradcheck()

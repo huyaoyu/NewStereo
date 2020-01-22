@@ -139,7 +139,7 @@ def test_backward_small_double( \
     W=8
 
     # Random tensor.
-    t0 = torch.linspace(0, B*C*H*W-1, B*C*H*W, dtype=torch.float64).view((B, C, H, W)).cuda()
+    t0 = torch.linspace(0, B*C*H*W-1, B*C*H*W, dtype=torch.float64).view((B, C, H, W)).cuda(3)
     t1 = t0.detach().clone()
     t0.requires_grad = True
     t1.requires_grad = True
@@ -155,7 +155,7 @@ def test_backward_small_double( \
     gridRadius = maxDisplacement // strideD
 
     # Gradient.
-    grad = torch.ones( (B, gridRadius+1, H, W-gridRadius), dtype=torch.float64 ).cuda()
+    grad = torch.ones( (B, gridRadius+1, H, W-gridRadius), dtype=torch.float64 ).cuda(3)
 
     # Compute the autograd.
     out.backward( grad )
@@ -172,7 +172,7 @@ def test_backward_small_double( \
 
     # print(corr)
 
-    gradU = torch.ones( (B, gridRadius+1, H, W-gridRadius), dtype=torch.float64 ).cuda()
+    gradU = torch.ones( (B, gridRadius+1, H, W-gridRadius), dtype=torch.float64 ).cuda(3)
 
     # Backward.
     gU = corr.backward(gradU)
@@ -189,8 +189,9 @@ def test_backward_small_double( \
     print("torch.norm(t1.grad - u1.grad) = {}. ".format( torch.norm(t1.grad - u1.grad) ))
 
 if __name__ == "__main__":
-    # test_backward()
-    # print("===")
-    # test_backward_small()
-    # print("===")
+    torch.cuda.set_device(3)
+    test_backward()
+    print("===")
+    test_backward_small()
+    print("===")
     test_backward_small_double()
