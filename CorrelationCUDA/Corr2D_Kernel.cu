@@ -198,9 +198,9 @@ __global__ void k_corr_2d_forward(
     const int idxXOut = blockIdx.x;
     const int idxYOut = blockIdx.y;
 
-    const int B   = input0.size(0);
-    const int H   = input0.size(1) - padding * 2;
-    const int W   = input0.size(2) - padding * 2;
+    // const int B   = input0.size(0);
+    // const int H   = input0.size(1) - padding * 2;
+    // const int W   = input0.size(2) - padding * 2;
     const int inC = input0.size(3);
 
     // Kernel.
@@ -218,9 +218,9 @@ __global__ void k_corr_2d_forward(
     scalar_t* corrResults = kernel0 + nElements;
 
     // The upper-left corner of the current kernel.
-    // Note that, for normal situation, kernelRadius == padding.
-    const int x0 = idxXOut * strideK - kernelRadius + padding + maxDisplacement;
-    const int y0 = idxYOut * strideK - kernelRadius + padding;
+    // Note that, for normal situation, kernelRadius <= padding >= maxDisplacement.
+    const int x0 = idxXOut * strideK + gridRadius*strideD - kernelRadius;
+    const int y0 = idxYOut * strideK + gridRadius*strideD - kernelRadius;
 
     // Load the kernel data of input0 into the shared memory.
     for ( int j = 0; j < kernelSize; j++ ) // Height.
@@ -245,6 +245,18 @@ __global__ void k_corr_2d_forward(
 
         int y1 = y0;
         int x1 = x0 - gridRadius * strideD + idxOutC * strideD;
+
+        if ( x1 < 0 ) // If gridRadius * strideD >= padding then the first kernelRadius number of x1 will be negative.
+        {
+            __syncthreads();
+
+            if ( 0 == idxC )
+            {
+                output[idxB][idxOutC][idxYOut][idxXOut] = static_cast<scalar_t>(0.0);
+            }
+
+            continue;
+        }
 
         for ( int j = 0; j < kernelSize; j++ )
         {
@@ -309,8 +321,8 @@ __global__ void k_corr_2d_backward_0(
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output0,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
-    const int x0 = blockIdx.x * strideK + padding;
-    const int y0 = blockIdx.y * strideK + padding;
+    const int x0 = blockIdx.x + padding;
+    const int y0 = blockIdx.y + padding;
     const int idxInC = blockIdx.z;
 
     const int gradH = grad.size(2);
@@ -328,10 +340,10 @@ __global__ void k_corr_2d_backward_0(
     
     // The indices in grad that correspond to the kernels that cover the (x0, y0) position in input0.
     int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
-    int yGMin = ( y0                      - 2*kernelRadius ) / strideK;
+    int yGMin = ( y0 - gridRadius*strideD - 2*kernelRadius ) / strideK;
 
     int xGMax = ( x0 - gridRadius*strideD ) / strideK;
-    int yGMax = ( y0                      ) / strideK;
+    int yGMax = ( y0 - gridRadius*strideD ) / strideK;
 
     if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
     {
@@ -363,13 +375,20 @@ __global__ void k_corr_2d_backward_0(
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
-                int yL0 = yG * strideK + kernelRadius;
+                // int yL0 = yG * strideK + kernelRadius;
+                int yL0 = yG * strideK + gridRadius*strideD;
                 int yL1 = yL0;
 
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
-                    int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
+                    // int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
+                    int xL0 = xG * strideK + gridRadius*strideD; // Padded.
+                    int xL1 = xL0 - gridRadius * strideD + g * strideD;  // Padded.
+
+                    if ( xL1 - kernelRadius < 0 )
+                    {
+                        continue;
+                    }
 
                     scalar_t crKernel = cr[b][g][yG][xG];
                     scalar_t L0Kernel = L0[b][0][yL0][xL0];
@@ -411,8 +430,8 @@ __global__ void k_corr_2d_backward_1(
     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output1,
     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD )
 {
-    const int x1 = blockIdx.x * strideK + padding;
-    const int y1 = blockIdx.y * strideK + padding;
+    const int x1 = blockIdx.x + padding;
+    const int y1 = blockIdx.y + padding;
     const int idxInC = blockIdx.z;
 
     const int gradH = grad.size(2);
@@ -445,10 +464,10 @@ __global__ void k_corr_2d_backward_1(
 
             // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
             int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
-            int yGMin = ( y0                      - 2*kernelRadius ) / strideK;
+            int yGMin = ( y0 - gridRadius*strideD - 2*kernelRadius ) / strideK;
 
             int xGMax = ( x0 - gridRadius*strideD ) / strideK;
-            int yGMax = ( y0                      ) / strideK;
+            int yGMax = ( y0 - gridRadius*strideD ) / strideK;
 
             if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
             {
@@ -465,13 +484,20 @@ __global__ void k_corr_2d_backward_1(
 
             for ( int yG = yGMin; yG <= yGMax; yG++ )
             {
-                int yL0 = yG * strideK + kernelRadius;
+                // int yL0 = yG * strideK + kernelRadius;
+                int yL0 = yG * strideK + gridRadius*strideD;
                 int yL1 = yL0;
 
                 for ( int xG = xGMin; xG <= xGMax; xG++ )
                 {
-                    int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
+                    // int xL0 = xG * strideK + gridRadius*strideD + kernelRadius; // Padded.
+                    int xL0 = xG * strideK + gridRadius*strideD; // Padded.
                     int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
+
+                    if ( xL1 - kernelRadius < 0 )
+                    {
+                        continue;
+                    }
 
                     scalar_t crKernel = cr[b][g][yG][xG];
                     scalar_t L0Kernel = L0[b][0][yL0][xL0];
@@ -619,10 +645,13 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
     const int paddedInputW = W + padding*2;
 
     const int gridRadius = maxDisplacement / strideD;
+    const int gridRadDisp = gridRadius * strideD;
 
-    const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - kernelRadius * 2) / static_cast<float>(strideK) ) );
-    const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - kernelRadius * 2 - gridRadius*strideD) / static_cast<float>(strideK) ) );
-    
+    // const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - kernelRadius * 2 - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
+    // const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - kernelRadius * 2 - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
+    const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
+    const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
+
     const int outC = gridRadius + 1; // The output channels
 
     // Rearrange the inputs.

@@ -9,13 +9,13 @@ import torch
 import Corr2D
 import Corr2D_ext
 
-def test_gradcheck(B=2, C=2, H=16, W=16, \
-        padding=1, kernelSize=3, maxDisplacement=4, strideK=1, strideD=1):
+def test_gradcheck(B=1, C=1, H=4, W=4, \
+        padding=1, kernelSize=3, maxDisplacement=1, strideK=1, strideD=1):
 
     print("test_backward()")
 
     # Random tensor.
-    t0 = torch.rand((B, C, H, W)).double().cuda()
+    t0 = torch.ones((B, C, H, W)).double().cuda()
     t1 = t0.clone().detach()
 
     t0.requires_grad = True
@@ -112,11 +112,11 @@ def test_real_image_shift(shift=0):
     plt.show()
 
 if __name__ == "__main__":
-    torch.cuda.set_device(3)
-    test_real_image_shift(0)
+    torch.cuda.set_device(0)
+    # test_real_image_shift(0)
     
     # torch.autograd.gradcheck()
-    # test_gradcheck()
+    test_gradcheck()
 
     # # Load two images.
     # img0 = cv2.imread("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/RGB_cleanpass/left/0006.png", cv2.IMREAD_UNCHANGED)

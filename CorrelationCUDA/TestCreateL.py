@@ -8,7 +8,7 @@ def test_small_size():
 
     # Random tensor.
     x0 = torch.ones((2,2,3,5)).cuda()
-    r0 = Corr2D_ext.test_from_BCHW_2_BHWC_padded(x0, 1)
+    r0 = Corr2D_ext.test_from_BCHW_2_BHWC_padded(x0, 4)
 
     # Apply funcion.
     y = Corr2D_ext.test_create_L(r0, 3)
