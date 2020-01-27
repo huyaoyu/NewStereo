@@ -158,10 +158,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # import ipdb; ipdb.set_trace()
 
         loss = \
-              0.6400 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
-            + 0.1600 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
-            + 0.0400 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
-            + 0.0100 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
+              0.0800 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
+            + 0.0400 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
+            + 0.0100 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
+            + 0.0050 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
             + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
 
         # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
@@ -305,10 +305,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
             
             loss = \
-                  0.6400 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
-                + 0.1600 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
-                + 0.0400 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
-                + 0.0100 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
+                  0.0800 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
+                + 0.0400 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
+                + 0.0100 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
+                + 0.0050 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
                 + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
 
             # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
