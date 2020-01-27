@@ -339,11 +339,11 @@ __global__ void k_corr_2d_backward_0(
     const int nEles = kernelSize * kernelSize * input1.size(3); // Already re-ordered.
     
     // The indices in grad that correspond to the kernels that cover the (x0, y0) position in input0.
-    int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
-    int yGMin = ( y0 - gridRadius*strideD - 2*kernelRadius ) / strideK;
+    int xGMin = ( x0 - gridRadius*strideD - kernelRadius ) / strideK; // Padded.
+    int yGMin = ( y0 - gridRadius*strideD - kernelRadius ) / strideK;
 
-    int xGMax = ( x0 - gridRadius*strideD ) / strideK;
-    int yGMax = ( y0 - gridRadius*strideD ) / strideK;
+    int xGMax = ( x0 - gridRadius*strideD + kernelRadius ) / strideK;
+    int yGMax = ( y0 - gridRadius*strideD + kernelRadius ) / strideK;
 
     if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
     {
@@ -463,11 +463,11 @@ __global__ void k_corr_2d_backward_1(
             int x0 = x1 + gridRadius * strideD - g * strideD; // Padded.
 
             // The indices in grad that correspond to the kernels that cover the (x1, y1) position in input1.
-            int xGMin = ( x0 - gridRadius*strideD - 2*kernelRadius ) / strideK; // Padded.
-            int yGMin = ( y0 - gridRadius*strideD - 2*kernelRadius ) / strideK;
+            int xGMin = ( x0 - gridRadius*strideD - kernelRadius ) / strideK; // Padded.
+            int yGMin = ( y0 - gridRadius*strideD - kernelRadius ) / strideK;
 
-            int xGMax = ( x0 - gridRadius*strideD ) / strideK;
-            int yGMax = ( y0 - gridRadius*strideD ) / strideK;
+            int xGMax = ( x0 - gridRadius*strideD + kernelRadius ) / strideK;
+            int yGMax = ( y0 - gridRadius*strideD + kernelRadius ) / strideK;
 
             if ( xGMax < 0 || yGMax < 0 || xGMin > gradW - 1 || yGMin > gradH - 1 )
             {

@@ -25,7 +25,7 @@ def test_gradcheck(B=1, C=1, H=4, W=4, \
     corr2d = Corr2D.Corr2DM( maxDisplacement, padding=padding, kernelSize=kernelSize, strideK=strideK, strideD=strideD )
 
     # Check gradient.
-    test = torch.autograd.gradcheck( corr2d, ( t0, t1 ), eps=1e-1, atol=1e-6 )
+    test = torch.autograd.gradcheck( corr2d, ( t0, t1 ), eps=1e-3, atol=1e-6 )
     print(test)
 
 def test_two_tensors(t0, t1, \

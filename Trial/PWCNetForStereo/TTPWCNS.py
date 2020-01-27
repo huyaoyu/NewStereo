@@ -81,7 +81,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         
         self.params = PWCNetStereoParams()
 
-        self.params.maxDisp = self.maxDisparity
+        self.params.set_max_disparity( self.maxDisparity )
+        self.params.corrKernelSize = 1
         
         self.model = PWCNetStereo(self.params)
 
@@ -143,11 +144,11 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
 
-        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="trilinear", align_corners=False ) * 0.5**1
-        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="trilinear", align_corners=False ) * 0.5**2
-        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="trilinear", align_corners=False ) * 0.5**3
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="trilinear", align_corners=False ) * 0.5**4
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="trilinear", align_corners=False ) * 0.5**5
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
 
         self.optimizer.zero_grad()
 
@@ -157,11 +158,13 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # import ipdb; ipdb.set_trace()
 
         loss = \
-              0.080 * F.MSELoss( disp5, dispL5, reduction="sum" ) \
-            + 0.020 * F.MSELoss( disp4, dispL4, reduction="sum" ) \
-            + 0.010 * F.MSELoss( disp3, dispL3, reduction="sum" ) \
-            + 0.005 * F.MSELoss( disp2, dispL2, reduction="sum" ) \
-            + 0.0025 * F.MSELoss( disp1, dispL1, reduction="sum" )
+              0.6400 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
+            + 0.1600 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
+            + 0.0400 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
+            + 0.0100 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
+            + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
+
+        # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
         loss.backward()
 
@@ -288,13 +291,27 @@ class TrainTestPWCNetStereo(TrainTestBase):
             gradL = gradL.cuda()
             gradR = gradR.cuda()
 
-        # import ipdb; ipdb.set_trace()
+        # Create a set of true data with various scales.
+        B, C, H, W = imgL.size()
+
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
 
         with torch.no_grad():
             # Forward.
-            pred0 = self.model( imgL, imgR, gradL, gradR )
-            loss = F.smooth_l1_loss( pred0, dispL[:,:,:,self.maxDisparity:], reduction="mean" )
-            # loss = torch.mean( torch.abs( pred0 - dispL ) )
+            disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+            
+            loss = \
+                  0.6400 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
+                + 0.1600 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
+                + 0.0400 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
+                + 0.0100 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
+                + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
+
+            # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
         self.countTest += 1
 
@@ -305,8 +322,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        self.draw_test_results( identifier, pred0, dispL, imgL, imgR )
-        self.save_test_disp( identifier, pred0 )
+        self.draw_test_results( identifier, disp1, dispL1, imgL, imgR )
+        self.save_test_disp( identifier, disp1 )
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):
@@ -341,6 +358,6 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         # Save the model and optimizer.
         if ( False == self.flagTest and False == self.flagInfer ):
-            self.frame.save_model( self.model, "SSS" )
-            self.frame.save_optimizer( self.optimizer, "SSS_Opt" )
+            self.frame.save_model( self.model, "PWCNS" )
+            self.frame.save_optimizer( self.optimizer, "PWCNS_Opt" )
         # self.frame.logger.warning("Model not saved for dummy test.")

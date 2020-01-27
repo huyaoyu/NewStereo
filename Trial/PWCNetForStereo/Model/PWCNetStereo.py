@@ -61,7 +61,7 @@ class CostRegulator(nn.Module):
         cumCh = np.cumsum( interChList ).tolist()
         cumCh = [ 0, *cumCh ]
 
-        self.regulators = []
+        self.regulators = nn.ModuleList()
 
         for i in range(n):
             self.regulators.append( cm.Conv_W( inCh + cumCh[i], interChList[i], activation=nn.LeakyReLU(0.1) ) )
@@ -72,7 +72,7 @@ class CostRegulator(nn.Module):
         n = len(self.regulators)
 
         for i in range(n):
-            x = torch.cat( ( self.regulators[i], x ), 1 )
+            x = torch.cat( ( self.regulators[i](x), x ), 1 )
 
         if ( self.lastActivation is not None ):
             x = self.lastActivation(x)
@@ -181,9 +181,11 @@ class WarpByDisparity(nn.Module):
 
         vgrid = grid.clone()
 
+        # import ipdb; ipdb.set_trace()
+
         # Only the x-coodinate is changed. 
         # Disparity values are always non-negative.
-        vgrid[:, 0, :, :] = vgrid[:, 0, :, :] - disp
+        vgrid[:, 0, :, :] = vgrid[:, 0, :, :] - disp.squeeze(1) # Disparity only has 1 channel. vgrid[:, 0, :, :] will only have 3 dims.
 
         # Scale grid to [-1,1]. 
         vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:].clone() / max(W-1,1)-1.0
@@ -207,7 +209,7 @@ class PWCNetStereoParams(object):
     def __init__(self):
         super(PWCNetStereoParams, self).__init__()
 
-        self.amp = 20
+        self.amp = 1
 
         self.maxDisp = 4
 
@@ -216,6 +218,12 @@ class PWCNetStereoParams(object):
         self.corrKernelSize = 1
         self.corrStrideK    = 1
         self.corrStrideD    = 1
+
+    def set_max_disparity(self, md):
+        assert md > 0
+
+        self.maxDisp = int( md )
+        self.corrPadding = self.maxDisp
 
 class PWCNetStereo(nn.Module):
     def __init__(self, params):
@@ -230,6 +238,8 @@ class PWCNetStereo(nn.Module):
         self.fe4 = ConvExtractor( 64,  96)
         self.fe5 = ConvExtractor( 96, 128)
         # self.fe6 = ConvExtractor(128, 196)
+
+        # import ipdb; ipdb.set_trace()
 
         # Correlation.
         self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
@@ -313,6 +323,8 @@ class PWCNetStereo(nn.Module):
         f50 = self.fe5(f40)
         f51 = self.fe5(f41)
 
+        # import ipdb; ipdb.set_trace()
+
         # f60 = self.fe6(f50)
         # f61 = self.fe6(f51)
 
@@ -328,15 +340,15 @@ class PWCNetStereo(nn.Module):
         # scale = 5
 
         # # Warp.
-        # warp5 = self.warp( fe51, upDisp6 * self.amp * 0.5**scale )
+        # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
         warp5 = f51
 
         # Correlation.
-        cost5 = self.corr2dm( fe50, warp5 )
+        cost5 = self.corr2dm( f50, warp5 )
         cost5 = self.corrActivation( cost5 )
 
         # # Concatenate.
-        # cost5 = torch.cat( (cost5, fe50, upDisp6, upFeat6), 1 )
+        # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
 
         # Disparity.
         disp5, upDisp5, upFeat5 = self.disp5(cost5)
@@ -345,14 +357,15 @@ class PWCNetStereo(nn.Module):
         scale = 4
 
         # Warp.
-        warp4 = self.warp( fe41, upDisp5 * self.amp * 0.5**scale )
+        # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
+        warp4 = self.warp( f41, upDisp5 * ( 2 * self.params.amp * 0.5**scale ) )
 
         # Correlation.
-        cost4 = self.corr2dm( fe40, warp4 )
+        cost4 = self.corr2dm( f40, warp4 )
         cost4 = self.corrActivation( cost4 )
 
         # Concatenate.
-        cost4 = torch.cat( (cost4, fe40, upDisp5, upFeat5), 1 )
+        cost4 = torch.cat( (cost4, f40, upDisp5, upFeat5), 1 )
 
         # Disparity.
         disp4, upDisp4, upFeat4 = self.disp4(cost4)
@@ -361,14 +374,15 @@ class PWCNetStereo(nn.Module):
         scale = 3
 
         # Warp.
-        warp3 = self.warp( fe31, upDisp4 * self.amp * 0.5**scale )
+        # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
+        warp3 = self.warp( f31, upDisp4 * ( 2 * self.params.amp * 0.5**scale ) )
 
         # Correlation.
-        cost3 = self.corr2dm( fe30, warp3 )
+        cost3 = self.corr2dm( f30, warp3 )
         cost3 = self.corrActivation( cost3 )
 
         # Concatenate.
-        cost3 = torch.cat( (cost3, fe30, upDisp4, upFeat4), 1 )
+        cost3 = torch.cat( (cost3, f30, upDisp4, upFeat4), 1 )
 
         # Disparity.
         disp3, upDisp3, upFeat3 = self.disp3(cost3)
@@ -377,14 +391,15 @@ class PWCNetStereo(nn.Module):
         scale = 2
 
         # Warp.
-        warp2 = self.warp( fe21, upDisp3 * self.amp * 0.5**scale )
+        # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
+        warp2 = self.warp( f21, upDisp3 * ( 2 * self.params.amp * 0.5**scale ) )
 
         # Correlation.
-        cost2 = self.corr2dm( fe20, warp2 )
+        cost2 = self.corr2dm( f20, warp2 )
         cost2 = self.corrActivation( cost2 )
 
         # Concatenate.
-        cost2 = torch.cat( (cost2, fe20, upDisp3, upFeat3), 1 )
+        cost2 = torch.cat( (cost2, f20, upDisp3, upFeat3), 1 )
 
         # Disparity.
         disp2, upDisp2, upFeat2 = self.disp2(cost2)
@@ -393,14 +408,15 @@ class PWCNetStereo(nn.Module):
         scale = 1
 
         # Warp.
-        warp1 = self.warp( fe11, upDisp2 * self.amp * 0.5**scale )
+        # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
+        warp1 = self.warp( f11, upDisp2 * ( 2 * self.params.amp * 0.5**scale ) )
 
         # Correlation.
-        cost1 = self.corr2dm( fe10, warp1 )
+        cost1 = self.corr2dm( f10, warp1 )
         cost1 = self.corrActivation( cost1 )
 
         # Concatenate.
-        cost1 = torch.cat( (cost1, fe10, upDisp2, upFeat2), 1 )
+        cost1 = torch.cat( (cost1, f10, upDisp2, upFeat2), 1 )
 
         # Disparity.
         disp1, feat1 = self.disp1(cost1)
@@ -414,7 +430,7 @@ class PWCNetStereo(nn.Module):
         if ( self.training ):
             return disp1, disp2, disp3, disp4, disp5 #, disp6
         else:
-            return disp1
+            return disp1, disp2, disp3, disp4, disp5
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")
