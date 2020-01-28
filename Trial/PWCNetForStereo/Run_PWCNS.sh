@@ -2,7 +2,7 @@
 
 echo "Run Run_PWCNS.py"
 
-python Run_PWCNS.py --working-dir ./WD/InitTest \
+python Run_PWCNS.py --working-dir ./WD/InitTestOverfit \
     --grayscale \
     --max-disparity 4 \
     --dl-batch-size 2 \

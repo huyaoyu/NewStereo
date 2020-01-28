@@ -358,7 +358,7 @@ class PWCNetStereo(nn.Module):
 
         # Warp.
         # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
-        warp4 = self.warp( f41, upDisp5 * ( 2 * self.params.amp * 0.5**scale ) )
+        warp4 = self.warp( f41, upDisp5 * ( 0.5**scale / self.params.amp ) )
 
         # Correlation.
         cost4 = self.corr2dm( f40, warp4 )
@@ -375,7 +375,7 @@ class PWCNetStereo(nn.Module):
 
         # Warp.
         # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
-        warp3 = self.warp( f31, upDisp4 * ( 2 * self.params.amp * 0.5**scale ) )
+        warp3 = self.warp( f31, upDisp4 * ( 0.5**scale / self.params.amp ) )
 
         # Correlation.
         cost3 = self.corr2dm( f30, warp3 )
@@ -392,7 +392,7 @@ class PWCNetStereo(nn.Module):
 
         # Warp.
         # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
-        warp2 = self.warp( f21, upDisp3 * ( 2 * self.params.amp * 0.5**scale ) )
+        warp2 = self.warp( f21, upDisp3 * ( 0.5**scale / self.params.amp ) )
 
         # Correlation.
         cost2 = self.corr2dm( f20, warp2 )
@@ -409,7 +409,7 @@ class PWCNetStereo(nn.Module):
 
         # Warp.
         # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
-        warp1 = self.warp( f11, upDisp2 * ( 2 * self.params.amp * 0.5**scale ) )
+        warp1 = self.warp( f11, upDisp2 * ( 0.5**scale / self.params.amp ) )
 
         # Correlation.
         cost1 = self.corr2dm( f10, warp1 )

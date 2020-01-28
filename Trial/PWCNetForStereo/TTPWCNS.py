@@ -144,11 +144,11 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
 
-        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
-        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
-        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False )
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False )
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False )
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False )
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False )
 
         self.optimizer.zero_grad()
 
@@ -158,11 +158,11 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # import ipdb; ipdb.set_trace()
 
         loss = \
-              0.0800 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
-            + 0.0400 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
-            + 0.0100 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
-            + 0.0050 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
-            + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
+              F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+            + F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+            + F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            + F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
         # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
@@ -294,22 +294,22 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
 
-        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
-        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
-        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False )
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False )
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False )
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False )
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False )
 
         with torch.no_grad():
             # Forward.
             disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
             
             loss = \
-                  0.0800 * F.mse_loss( disp5, dispL5, reduction="sum" ) \
-                + 0.0400 * F.mse_loss( disp4, dispL4, reduction="sum" ) \
-                + 0.0100 * F.mse_loss( disp3, dispL3, reduction="sum" ) \
-                + 0.0050 * F.mse_loss( disp2, dispL2, reduction="sum" ) \
-                + 0.0025 * F.mse_loss( disp1, dispL1, reduction="sum" )
+                  F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+                + F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+                + F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                + F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
             # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
