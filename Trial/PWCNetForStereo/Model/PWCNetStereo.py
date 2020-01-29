@@ -139,6 +139,40 @@ class Cost2DisparityAndFeature(nn.Module):
         else:
             return disp, x
 
+class Cost2DisparityAndFeatureRes(nn.Module):
+    def __init__(self, inCh, outFeatCh, interChList, flagUp=True):
+        super(Cost2DisparityAndFeatureRes, self).__init__()
+
+        # The regulator.
+        self.regulator = CostRegulator(inCh, interChList)
+
+        cumCh = np.cumsum( interChList )
+
+        # The disparity predictor.
+        self.disp = PredictDisparity( inCh + cumCh[-1] )
+
+        # The up-sample model.
+        if ( flagUp ):
+            self.upDisp = UpDisparity()
+            self.upFeat = UpFeature( inCh + cumCh[-1], outFeatCh )
+        else:
+            self.upDisp = None
+            self.upFeat = None
+
+    def forward(self, x, lastDisp):
+        x = self.regulator(x)
+
+        disp = self.disp(x)
+        disp = disp + lastDisp
+
+        if ( self.upDisp is not None and self.upFeat is not None ):
+            upDisp = self.upDisp(disp)
+            upFeat = self.upFeat(x)
+
+            return disp, upDisp, upFeat
+        else:
+            return disp, x
+
 class DisparityRefine(nn.Module):
     def __init__(self, inCh):
         super(DisparityRefine, self).__init__()
@@ -420,6 +454,210 @@ class PWCNetStereo(nn.Module):
 
         # Disparity.
         disp1, feat1 = self.disp1(cost1)
+
+        # ========== Disparity refinement. ==========
+        disp1 = self.refine( disp1, feat1 )
+
+        # # Final up-sample.
+        # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
+
+        if ( self.training ):
+            return disp1, disp2, disp3, disp4, disp5 #, disp6
+        else:
+            return disp1, disp2, disp3, disp4, disp5
+
+class PWCNetStereoRes(nn.Module):
+    def __init__(self, params):
+        super(PWCNetStereoRes, self).__init__()
+
+        self.params = params
+
+        # Feature extractors.
+        self.fe1 = ConvExtractor(  1,  16)
+        self.fe2 = ConvExtractor( 16,  32)
+        self.fe3 = ConvExtractor( 32,  64)
+        self.fe4 = ConvExtractor( 64,  96)
+        self.fe5 = ConvExtractor( 96, 128)
+        # self.fe6 = ConvExtractor(128, 196)
+
+        # import ipdb; ipdb.set_trace()
+
+        # Correlation.
+        self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
+            padding=self.params.corrPadding, \
+            kernelSize=self.params.corrKernelSize, \
+            strideK=self.params.corrStrideK, \
+            strideD=self.params.corrStrideD )
+
+        self.corrActivation = nn.LeakyReLU(0.1)
+
+        nd = self.params.maxDisp + 1
+
+        # Disparity at various scale.
+        interChList = [ 128, 128, 96, 64, 32 ]
+        chFeat      = np.sum( interChList )
+
+        self.disp5 = Cost2DisparityAndFeature(nd, 1, interChList)
+        self.disp4 = Cost2DisparityAndFeatureRes(nd + 96, 1, interChList)
+        self.disp3 = Cost2DisparityAndFeatureRes(nd + 64, 1, interChList)
+        self.disp2 = Cost2DisparityAndFeatureRes(nd + 32, 1, interChList)
+        self.disp1 = Cost2DisparityAndFeatureRes(nd + 16, 1, interChList, flagUp=False)
+
+        self.refine = DisparityRefine( nd + 16 + chFeat )
+
+        # Warp.
+        self.warp = WarpByDisparity()
+
+        # Initialization.
+        # for m in self.modules():
+        #     # print(m)
+        #     if ( isinstance( m, (nn.Conv2d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1]
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
+        #         m.weight.data.normal_(1/n, math.sqrt( 2.0 / n ))
+        #         m.weight.data = m.weight.data / m.in_channels
+        #     elif ( isinstance( m, (nn.Conv3d) ) ):
+        #         n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
+        #         m.weight.data.uniform_(0, math.sqrt( 2.0 / n ))
+        #     elif ( isinstance( m, (nn.BatchNorm2d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.BatchNorm3d) ) ):
+        #         m.weight.data.fill_(1)
+        #         m.bias.data.zero_()
+        #     elif ( isinstance( m, (nn.Linear) ) ):
+        #         m.weight.data.uniform_(0, 1)
+        #         m.bias.data.zero_()
+        #     # else:
+        #     #     raise Exception("Unexpected module type {}.".format(type(m)))
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+    def forward(self, gray0, gray1, grad0, grad1):
+        B, C, H, W = gray0.size()
+        
+        # Feature extraction.
+        f10 = self.fe1(gray0)
+        f11 = self.fe1(gray1)
+        
+        f20 = self.fe2(f10)
+        f21 = self.fe2(f11)
+
+        f30 = self.fe3(f20)
+        f31 = self.fe3(f21)
+
+        f40 = self.fe4(f30)
+        f41 = self.fe4(f31)
+
+        f50 = self.fe5(f40)
+        f51 = self.fe5(f41)
+
+        # import ipdb; ipdb.set_trace()
+
+        # f60 = self.fe6(f50)
+        # f61 = self.fe6(f51)
+
+        # # ========== Scale 6. ========== 
+        # # Correlation.
+        # cost6 = self.corr2dm( f60, f61 )
+        # cost6 = self.corrActivation( cost6 )
+
+        # # Disparity.
+        # disp6, upDisp6, upFeat6 = self.disp6(cost6)
+
+        # ========== Scale 5. ==========
+        # scale = 5
+
+        # # Warp.
+        # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
+        warp5 = f51
+
+        # Correlation.
+        cost5 = self.corr2dm( f50, warp5 )
+        cost5 = self.corrActivation( cost5 )
+
+        # # Concatenate.
+        # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
+
+        # Disparity.
+        disp5, upDisp5, upFeat5 = self.disp5(cost5)
+
+        # ========== Scale 4. ==========
+        scale = 4
+
+        # Warp.
+        # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
+        upDisp5 = upDisp5 * ( 0.5**scale / self.params.amp )
+        warp4 = self.warp( f41, upDisp5 )
+
+        # Correlation.
+        cost4 = self.corr2dm( f40, warp4 )
+        cost4 = self.corrActivation( cost4 )
+
+        # Concatenate.
+        cost4 = torch.cat( (cost4, f40), 1 )
+
+        # Disparity.
+        disp4, upDisp4, upFeat4 = self.disp4(cost4, upDisp5)
+
+        # ========== Scale 3. ==========
+        scale = 3
+
+        # Warp.
+        # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
+        upDisp4 = upDisp4 * ( 0.5**scale / self.params.amp )
+        warp3 = self.warp( f31, upDisp4 )
+
+        # Correlation.
+        cost3 = self.corr2dm( f30, warp3 )
+        cost3 = self.corrActivation( cost3 )
+
+        # Concatenate.
+        cost3 = torch.cat( (cost3, f30), 1 )
+
+        # Disparity.
+        disp3, upDisp3, upFeat3 = self.disp3(cost3, upDisp4)
+
+        # ========== Scale 2. ==========
+        scale = 2
+
+        # Warp.
+        # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
+        upDisp3 = upDisp3 * ( 0.5**scale / self.params.amp )
+        warp2 = self.warp( f21, upDisp3 )
+
+        # Correlation.
+        cost2 = self.corr2dm( f20, warp2 )
+        cost2 = self.corrActivation( cost2 )
+
+        # Concatenate.
+        cost2 = torch.cat( (cost2, f20), 1 )
+
+        # Disparity.
+        disp2, upDisp2, upFeat2 = self.disp2(cost2, upDisp3)
+
+        # ========== Scale 1. ==========
+        scale = 1
+
+        # Warp.
+        # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
+        upDisp2 = upDisp2 * ( 0.5**scale / self.params.amp )
+        warp1 = self.warp( f11, upDisp2 )
+
+        # Correlation.
+        cost1 = self.corr2dm( f10, warp1 )
+        cost1 = self.corrActivation( cost1 )
+
+        # Concatenate.
+        cost1 = torch.cat( (cost1, f10), 1 )
+
+        # Disparity.
+        disp1, feat1 = self.disp1(cost1, upDisp2)
 
         # ========== Disparity refinement. ==========
         disp1 = self.refine( disp1, feat1 )

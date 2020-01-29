@@ -13,7 +13,7 @@ import torch.optim as optim
 from workflow import WorkFlow, TorchFlow
 
 from TTBase import TrainTestBase
-from Model.PWCNetStereo import PWCNetStereo, PWCNetStereoParams
+from Model.PWCNetStereo import PWCNetStereo, PWCNetStereoRes, PWCNetStereoParams
 
 from CommonPython.PointCloud.PLYHelper import write_PLY
 
@@ -84,7 +84,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.params.set_max_disparity( self.maxDisparity )
         self.params.corrKernelSize = 1
         
-        self.model = PWCNetStereo(self.params)
+        # self.model = PWCNetStereo(self.params)
+        self.model = PWCNetStereoRes(self.params)
 
         # Check if we have to read the model from filesystem.
         if ( "" != self.readModelString ):
