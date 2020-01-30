@@ -182,127 +182,128 @@ __global__ void k_kernel_norm(
  * \param strideK The moving stride of the kernel. Positive.
  * \param strideD The moving stride within the neighborhood for correlation. Positive.
  */
- template <typename scalar_t>
- __global__ void k_corr_2d_forward( 
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
-     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
-     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD)
- {
-     const int idxC    = threadIdx.x;
-     const int strideC = blockDim.x;
- 
-     const int idxB    = blockIdx.z;
-     const int idxXOut = blockIdx.x;
-     const int idxYOut = blockIdx.y;
- 
-     // const int B   = input0.size(0);
-     // const int H   = input0.size(1) - padding * 2;
-     // const int W   = input0.size(2) - padding * 2;
-     const int inC = input0.size(3);
- 
-     // Kernel.
-     const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
-     const int k2 = kernelSize * kernelSize;
-     const int nElements = k2 * inC;
- 
-     // Output dimensions.
-     const int gridRadius = maxDisplacement / strideD;
-     const int outC = gridRadius + 1;
- 
-     // Shared memory.
-     extern __shared__ char sharedMemory[];
-     scalar_t* kernel0     = (scalar_t*)sharedMemory;
-     scalar_t* corrResults = kernel0 + nElements;
- 
-     // The upper-left corner of the current kernel.
-     // Note that, for normal situation, kernelRadius <= padding >= maxDisplacement.
-     const int x0 = idxXOut * strideK + gridRadius*strideD - kernelRadius;
-     const int y0 = idxYOut * strideK + gridRadius*strideD - kernelRadius;
- 
-     // Load the kernel data of input0 into the shared memory.
-     for ( int j = 0; j < kernelSize; j++ ) // Height.
-     {
-         for ( int i = 0; i < kernelSize; i++ ) // Width.
-         {
-             int chStart = ( j*kernelSize + i ) * inC;
-             for ( int c = idxC; c < inC; c += strideC )
-             {
-                 kernel0[ chStart + c ] = input0[idxB][y0+j][x0+i][c];
-             }
-         }
-     }
- 
-     __syncthreads();
- 
-     for ( int idxOutC = 0; idxOutC < outC; idxOutC++ )
-     {
-         corrResults[idxC] = 0.0; // Clear the shared memory.
- 
-         int y1 = y0;
-         int x1 = x0 - gridRadius * strideD + idxOutC * strideD;
- 
-         if ( x1 < 0 ) // If gridRadius * strideD >= padding then the first kernelRadius number of x1 will be negative.
-         {
-             __syncthreads();
- 
-             if ( 0 == idxC )
-             {
-                 output[idxB][idxOutC][idxYOut][idxXOut] = static_cast<scalar_t>(0.0);
-             }
- 
-             continue;
-         }
- 
-         for ( int j = 0; j < kernelSize; j++ )
-         {
-             for ( int i = 0; i < kernelSize; i++ )
-             {
-                 int chStart = ( j*kernelSize + i ) * inC;
-                 for ( int c = idxC; c < inC; c += strideC )
-                 {
-                     corrResults[idxC] += kernel0[ chStart + c ] * input1[idxB][y1+j][x1+i][c];
-                 }
-             }
-         }
- 
-         __syncthreads();
- 
-         if ( 0 == idxC )
-         {
-             scalar_t kernelSum = 0.0;
- 
-             for ( int i = 0; i < blockDim.x; i++ )
-             {
-                 kernelSum += corrResults[i];
-             }
- 
-             output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
-         }
-     }
- 
-     // // Test sum after load to shared memory.
-     // __syncthreads();
- 
-     // if ( 0 == idxC )
-     // {
-     //     scalar_t s = 0.0;
- 
-     //     for ( int j = 0; j < kernelSize; j++ ) // Height.
-     //     {
-     //         for ( int i = 0; i < kernelSize; i++ ) // Width.
-     //         {
-     //             int chStart = ( j*kernelSize + i ) * inC;
-     //             for ( int c = 0; c < inC; c++ )
-     //             {
-     //                 s += kernel0[ chStart + c ];
-     //             }
-     //         }
-     //     }
- 
-     //     output[idxB][0][idxYOut][idxXOut] = s;
-     // }
- }
+template <typename scalar_t>
+__global__ void k_corr_2d_forward( 
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD)
+{
+    const int idxC    = threadIdx.x;
+    const int strideC = blockDim.x;
+
+    const int idxB    = blockIdx.z;
+    const int idxXOut = blockIdx.x;
+    const int idxYOut = blockIdx.y;
+
+    // const int B   = input0.size(0);
+    // const int H   = input0.size(1) - padding * 2;
+    // const int W   = input0.size(2) - padding * 2;
+    const int W   = input0.size(2);
+    const int inC = input0.size(3);
+
+    // Kernel.
+    const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
+    const int k2 = kernelSize * kernelSize;
+    const int nElements = k2 * inC;
+
+    // Output dimensions.
+    const int gridRadius = maxDisplacement / strideD;
+    const int outC = gridRadius + 1 + gridRadius;
+
+    // Shared memory.
+    extern __shared__ char sharedMemory[];
+    scalar_t* kernel0     = (scalar_t*)sharedMemory;
+    scalar_t* corrResults = kernel0 + nElements;
+
+    // The upper-left corner of the current kernel.
+    // Note that, for normal situation, kernelRadius <= padding >= maxDisplacement.
+    const int x0 = idxXOut * strideK + gridRadius*strideD - kernelRadius;
+    const int y0 = idxYOut * strideK + gridRadius*strideD - kernelRadius;
+
+    // Load the kernel data of input0 into the shared memory.
+    for ( int j = 0; j < kernelSize; j++ ) // Height.
+    {
+        for ( int i = 0; i < kernelSize; i++ ) // Width.
+        {
+            int chStart = ( j*kernelSize + i ) * inC;
+            for ( int c = idxC; c < inC; c += strideC )
+            {
+                kernel0[ chStart + c ] = input0[idxB][y0+j][x0+i][c];
+            }
+        }
+    }
+
+    __syncthreads();
+
+    for ( int idxOutC = 0; idxOutC < outC; idxOutC++ )
+    {
+        corrResults[idxC] = 0.0; // Clear the shared memory.
+
+        int y1 = y0;
+        int x1 = x0 - gridRadius * strideD + idxOutC * strideD;
+
+        if ( x1 < 0 || x1 + kernelSize > W ) // If gridRadius * strideD >= padding then the first kernelRadius number of x1 will be negative.
+        {
+            __syncthreads();
+
+            if ( 0 == idxC )
+            {
+                output[idxB][idxOutC][idxYOut][idxXOut] = static_cast<scalar_t>(0.0);
+            }
+
+            continue;
+        }
+
+        for ( int j = 0; j < kernelSize; j++ )
+        {
+            for ( int i = 0; i < kernelSize; i++ )
+            {
+                int chStart = ( j*kernelSize + i ) * inC;
+                for ( int c = idxC; c < inC; c += strideC )
+                {
+                    corrResults[idxC] += kernel0[ chStart + c ] * input1[idxB][y1+j][x1+i][c];
+                }
+            }
+        }
+
+        __syncthreads();
+
+        if ( 0 == idxC )
+        {
+            scalar_t kernelSum = 0.0;
+
+            for ( int i = 0; i < blockDim.x; i++ )
+            {
+                kernelSum += corrResults[i];
+            }
+
+            output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
+        }
+    }
+
+    // // Test sum after load to shared memory.
+    // __syncthreads();
+
+    // if ( 0 == idxC )
+    // {
+    //     scalar_t s = 0.0;
+
+    //     for ( int j = 0; j < kernelSize; j++ ) // Height.
+    //     {
+    //         for ( int i = 0; i < kernelSize; i++ ) // Width.
+    //         {
+    //             int chStart = ( j*kernelSize + i ) * inC;
+    //             for ( int c = 0; c < inC; c++ )
+    //             {
+    //                 s += kernel0[ chStart + c ];
+    //             }
+    //         }
+    //     }
+
+    //     output[idxB][0][idxYOut][idxXOut] = s;
+    // }
+}
 
 template <typename scalar_t> 
 __global__ void k_corr_2d_backward_0(
@@ -320,9 +321,10 @@ __global__ void k_corr_2d_backward_0(
 
     const int gridOffset    = threadIdx.x; // The channel index of grad.
     const int gridRadius    = maxDisplacement / strideD;
-    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridSize      = gridRadius + 1 + gridRadius; // The number of channels of grad.
     const int gridIdxStride = blockDim.x;
     
+    const int W = input1.size(2); // Padded.
     const int B = input1.size(0); // Same with output0.
 
     const int kernelRadius = kernelSize / 2;
@@ -369,7 +371,7 @@ __global__ void k_corr_2d_backward_0(
                     int xL0 = xG * strideK + gridRadius*strideD; // Padded.
                     int xL1 = xL0 - gridRadius * strideD + g * strideD;  // Padded.
 
-                    if ( xL1 - kernelRadius < 0 )
+                    if ( xL1 - kernelRadius < 0 || xL1 + kernelRadius > W - 1 )
                     {
                         continue;
                     }
@@ -412,9 +414,10 @@ __global__ void k_corr_2d_backward_1(
 
     const int gridOffset    = threadIdx.x; // The channel index of grad.
     const int gridRadius    = maxDisplacement / strideD;
-    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridSize      = gridRadius + 1 + gridRadius; // The number of channels of grad.
     const int gridIdxStride = blockDim.x;
     
+    const int W = input0.size(2); // Padded.
     const int B = input0.size(0); // Same with output1.
 
     const int kernelRadius = kernelSize / 2;
@@ -461,7 +464,7 @@ __global__ void k_corr_2d_backward_1(
                     int xL0 = xG * strideK + gridRadius*strideD; // Padded.
                     int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
 
-                    if ( xL1 - kernelRadius < 0 )
+                    if ( xL1 - kernelRadius < 0 || xL1 + kernelRadius > W - 1 )
                     {
                         continue;
                     }
@@ -495,133 +498,134 @@ __global__ void k_corr_2d_backward_1(
  * \param strideK The moving stride of the kernel. Positive.
  * \param strideD The moving stride within the neighborhood for correlation. Positive.
  */
- template <typename scalar_t>
- __global__ void k_corr_2d_forward_zn( 
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L0,
-     const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L1,
-     torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
-     int padding, int kernelSize, int maxDisplacement, int strideK, int strideD)
- {
-     const int idxC    = threadIdx.x;
-     const int strideC = blockDim.x;
- 
-     const int idxB    = blockIdx.z;
-     const int idxXOut = blockIdx.x;
-     const int idxYOut = blockIdx.y;
- 
-     // const int B   = input0.size(0);
-     // const int H   = input0.size(1) - padding * 2;
-     // const int W   = input0.size(2) - padding * 2;
-     const int inC = input0.size(3);
- 
-     // Kernel.
-     const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
-     const int k2 = kernelSize * kernelSize;
-     const int nElements = k2 * inC;
- 
-     // Output dimensions.
-     const int gridRadius = maxDisplacement / strideD;
-     const int outC = gridRadius + 1;
- 
-     // Shared memory.
-     extern __shared__ char sharedMemory[];
-     scalar_t* kernel0     = (scalar_t*)sharedMemory;
-     scalar_t* corrResults = kernel0 + nElements;
- 
-     // The upper-left corner of the current kernel.
-     // Note that, for normal situation, kernelRadius <= padding >= maxDisplacement.
-     const int x0 = idxXOut * strideK + gridRadius*strideD - kernelRadius;
-     const int y0 = idxYOut * strideK + gridRadius*strideD - kernelRadius;
- 
-     // Load the kernel data of input0 into the shared memory.
-     for ( int j = 0; j < kernelSize; j++ ) // Height.
-     {
-         for ( int i = 0; i < kernelSize; i++ ) // Width.
-         {
-             int chStart = ( j*kernelSize + i ) * inC;
-             for ( int c = idxC; c < inC; c += strideC )
-             {
-                 kernel0[ chStart + c ] = input0[idxB][y0+j][x0+i][c];
-             }
-         }
-     }
- 
-     const scalar_t KL0 = L0[idxB][0][y0 + kernelRadius][x0 + kernelRadius];
- 
-     __syncthreads();
- 
-     for ( int idxOutC = 0; idxOutC < outC; idxOutC++ )
-     {
-         corrResults[idxC] = 0.0; // Clear the shared memory.
- 
-         int y1 = y0;
-         int x1 = x0 - gridRadius * strideD + idxOutC * strideD;
- 
-         if ( x1 < 0 ) // If gridRadius * strideD >= padding then the first kernelRadius number of x1 will be negative.
-         {
-             __syncthreads();
- 
-             if ( 0 == idxC )
-             {
-                 output[idxB][idxOutC][idxYOut][idxXOut] = static_cast<scalar_t>(0.0);
-             }
- 
-             continue;
-         }
- 
-         for ( int j = 0; j < kernelSize; j++ )
-         {
-             for ( int i = 0; i < kernelSize; i++ )
-             {
-                 int chStart = ( j*kernelSize + i ) * inC;
-                 for ( int c = idxC; c < inC; c += strideC )
-                 {
-                     corrResults[idxC] += kernel0[ chStart + c ] * input1[idxB][y1+j][x1+i][c];
-                 }
-             }
-         }
- 
-         __syncthreads();
- 
-         if ( 0 == idxC )
-         {
-             scalar_t KL1 = L1[idxB][0][y1 + kernelRadius][x1 + kernelRadius];
-             scalar_t kernelSum = 0.0;
- 
-             for ( int i = 0; i < blockDim.x; i++ )
-             {
-                 kernelSum += corrResults[i];
-             }
- 
-             // output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
-             output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum * KL0 * KL1;
-         }
-     }
- 
-     // // Test sum after load to shared memory.
-     // __syncthreads();
- 
-     // if ( 0 == idxC )
-     // {
-     //     scalar_t s = 0.0;
- 
-     //     for ( int j = 0; j < kernelSize; j++ ) // Height.
-     //     {
-     //         for ( int i = 0; i < kernelSize; i++ ) // Width.
-     //         {
-     //             int chStart = ( j*kernelSize + i ) * inC;
-     //             for ( int c = 0; c < inC; c++ )
-     //             {
-     //                 s += kernel0[ chStart + c ];
-     //             }
-     //         }
-     //     }
- 
-     //     output[idxB][0][idxYOut][idxXOut] = s;
-     // }
- }
+template <typename scalar_t>
+__global__ void k_corr_2d_forward_zn( 
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> input1,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L0,
+    const torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> L1,
+    torch::PackedTensorAccessor<scalar_t, 4, torch::RestrictPtrTraits, PTA_INDEX_TYPE> output,
+    int padding, int kernelSize, int maxDisplacement, int strideK, int strideD)
+{
+    const int idxC    = threadIdx.x;
+    const int strideC = blockDim.x;
+
+    const int idxB    = blockIdx.z;
+    const int idxXOut = blockIdx.x;
+    const int idxYOut = blockIdx.y;
+
+    // const int B   = input0.size(0);
+    // const int H   = input0.size(1) - padding * 2;
+    // const int W   = input0.size(2) - padding * 2;
+    const int W   = input0.size(2);
+    const int inC = input0.size(3);
+
+    // Kernel.
+    const int kernelRadius = kernelSize / 2; // kernelSize is assumed to be and odd number.
+    const int k2 = kernelSize * kernelSize;
+    const int nElements = k2 * inC;
+
+    // Output dimensions.
+    const int gridRadius = maxDisplacement / strideD;
+    const int outC = gridRadius + 1 + gridRadius;
+
+    // Shared memory.
+    extern __shared__ char sharedMemory[];
+    scalar_t* kernel0     = (scalar_t*)sharedMemory;
+    scalar_t* corrResults = kernel0 + nElements;
+
+    // The upper-left corner of the current kernel.
+    // Note that, for normal situation, kernelRadius <= padding >= maxDisplacement.
+    const int x0 = idxXOut * strideK + gridRadius*strideD - kernelRadius;
+    const int y0 = idxYOut * strideK + gridRadius*strideD - kernelRadius;
+
+    // Load the kernel data of input0 into the shared memory.
+    for ( int j = 0; j < kernelSize; j++ ) // Height.
+    {
+        for ( int i = 0; i < kernelSize; i++ ) // Width.
+        {
+            int chStart = ( j*kernelSize + i ) * inC;
+            for ( int c = idxC; c < inC; c += strideC )
+            {
+                kernel0[ chStart + c ] = input0[idxB][y0+j][x0+i][c];
+            }
+        }
+    }
+
+    const scalar_t KL0 = L0[idxB][0][y0 + kernelRadius][x0 + kernelRadius];
+
+    __syncthreads();
+
+    for ( int idxOutC = 0; idxOutC < outC; idxOutC++ )
+    {
+        corrResults[idxC] = 0.0; // Clear the shared memory.
+
+        int y1 = y0;
+        int x1 = x0 - gridRadius * strideD + idxOutC * strideD;
+
+        if ( x1 < 0 || x1 + kernelSize > W ) // If gridRadius * strideD >= padding then the first kernelRadius number of x1 will be negative.
+        {
+            __syncthreads();
+
+            if ( 0 == idxC )
+            {
+                output[idxB][idxOutC][idxYOut][idxXOut] = static_cast<scalar_t>(0.0);
+            }
+
+            continue;
+        }
+
+        for ( int j = 0; j < kernelSize; j++ )
+        {
+            for ( int i = 0; i < kernelSize; i++ )
+            {
+                int chStart = ( j*kernelSize + i ) * inC;
+                for ( int c = idxC; c < inC; c += strideC )
+                {
+                    corrResults[idxC] += kernel0[ chStart + c ] * input1[idxB][y1+j][x1+i][c];
+                }
+            }
+        }
+
+        __syncthreads();
+
+        if ( 0 == idxC )
+        {
+            scalar_t KL1 = L1[idxB][0][y1 + kernelRadius][x1 + kernelRadius];
+            scalar_t kernelSum = 0.0;
+
+            for ( int i = 0; i < blockDim.x; i++ )
+            {
+                kernelSum += corrResults[i];
+            }
+
+            // output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum / static_cast<scalar_t>( nElements );
+            output[idxB][idxOutC][idxYOut][idxXOut] = kernelSum * KL0 * KL1;
+        }
+    }
+
+    // // Test sum after load to shared memory.
+    // __syncthreads();
+
+    // if ( 0 == idxC )
+    // {
+    //     scalar_t s = 0.0;
+
+    //     for ( int j = 0; j < kernelSize; j++ ) // Height.
+    //     {
+    //         for ( int i = 0; i < kernelSize; i++ ) // Width.
+    //         {
+    //             int chStart = ( j*kernelSize + i ) * inC;
+    //             for ( int c = 0; c < inC; c++ )
+    //             {
+    //                 s += kernel0[ chStart + c ];
+    //             }
+    //         }
+    //     }
+
+    //     output[idxB][0][idxYOut][idxXOut] = s;
+    // }
+}
 
 template <typename scalar_t> 
 __global__ void k_corr_2d_backward_zn_0(
@@ -643,9 +647,10 @@ __global__ void k_corr_2d_backward_zn_0(
 
     const int gridOffset    = threadIdx.x; // The channel index of grad.
     const int gridRadius    = maxDisplacement / strideD;
-    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridSize      = gridRadius + 1 + gridRadius; // The number of channels of grad.
     const int gridIdxStride = blockDim.x;
     
+    const int W = input1.size(2); // Padded.
     const int B = input1.size(0); // Same with output0.
 
     const int kernelRadius = kernelSize / 2;
@@ -698,7 +703,7 @@ __global__ void k_corr_2d_backward_zn_0(
                     int xL0 = xG * strideK + gridRadius*strideD; // Padded.
                     int xL1 = xL0 - gridRadius * strideD + g * strideD;  // Padded.
 
-                    if ( xL1 - kernelRadius < 0 )
+                    if ( xL1 - kernelRadius < 0 || xL1 + kernelRadius > W - 1 )
                     {
                         continue;
                     }
@@ -752,9 +757,10 @@ __global__ void k_corr_2d_backward_zn_1(
 
     const int gridOffset    = threadIdx.x; // The channel index of grad.
     const int gridRadius    = maxDisplacement / strideD;
-    const int gridSize      = gridRadius + 1; // The number of channels of grad.
+    const int gridSize      = gridRadius + 1 + gridRadius; // The number of channels of grad.
     const int gridIdxStride = blockDim.x;
     
+    const int W = input0.size(2); // Padded.
     const int B = input0.size(0); // Same with output1.
 
     const int kernelRadius = kernelSize / 2;
@@ -807,7 +813,7 @@ __global__ void k_corr_2d_backward_zn_1(
                     int xL0 = xG * strideK + gridRadius*strideD; // Padded.
                     int xL1 = xL0 - gridRadius * strideD + g * strideD;         // Padded.
 
-                    if ( xL1 - kernelRadius < 0 )
+                    if ( xL1 - kernelRadius < 0 || xL1 + kernelRadius > W - 1 )
                     {
                         continue;
                     }
@@ -965,7 +971,7 @@ std::vector<torch::Tensor> corr_2d_forward_cuda(
     const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
     const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
 
-    const int outC = gridRadius + 1; // The output channels
+    const int outC = gridRadius + 1 + gridRadius; // The output channels
 
     // Rearrange the inputs.
     auto r0 = from_BCHW_2_BHWC_padded_cuda(input0, padding);
@@ -1120,7 +1126,7 @@ std::vector<torch::Tensor> corr_2d_forward_zn_cuda(
     const auto outH = static_cast<int>( ceil( static_cast<float>(paddedInputH - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
     const auto outW = static_cast<int>( ceil( static_cast<float>(paddedInputW - 2 * gridRadius*strideD) / static_cast<float>(strideK) ) );
 
-    const int outC = gridRadius + 1; // The output channels
+    const int outC = gridRadius + 1 + gridRadius; // The output channels
 
     // Rearrange the inputs.
     auto r0 = from_BCHW_2_BHWC_padded_cuda(input0, padding);

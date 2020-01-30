@@ -140,7 +140,7 @@ class Cost2DisparityAndFeature(nn.Module):
             return disp, x
 
 class Cost2DisparityAndFeatureRes(nn.Module):
-    def __init__(self, inCh, outFeatCh, interChList, flagUp=True):
+    def __init__(self, inCh, interChList, flagUp=True):
         super(Cost2DisparityAndFeatureRes, self).__init__()
 
         # The regulator.
@@ -154,10 +154,8 @@ class Cost2DisparityAndFeatureRes(nn.Module):
         # The up-sample model.
         if ( flagUp ):
             self.upDisp = UpDisparity()
-            self.upFeat = UpFeature( inCh + cumCh[-1], outFeatCh )
         else:
             self.upDisp = None
-            self.upFeat = None
 
     def forward(self, x, lastDisp):
         x = self.regulator(x)
@@ -165,11 +163,10 @@ class Cost2DisparityAndFeatureRes(nn.Module):
         disp = self.disp(x)
         disp = disp + lastDisp
 
-        if ( self.upDisp is not None and self.upFeat is not None ):
+        if ( self.upDisp is not None ):
             upDisp = self.upDisp(disp)
-            upFeat = self.upFeat(x)
 
-            return disp, upDisp, upFeat
+            return disp, upDisp
         else:
             return disp, x
 
@@ -491,17 +488,17 @@ class PWCNetStereoRes(nn.Module):
 
         self.corrActivation = nn.LeakyReLU(0.1)
 
-        nd = self.params.maxDisp + 1
+        nd = self.params.maxDisp + 1 + self.params.maxDisp
 
         # Disparity at various scale.
         interChList = [ 128, 128, 96, 64, 32 ]
         chFeat      = np.sum( interChList )
 
         self.disp5 = Cost2DisparityAndFeature(nd, 1, interChList)
-        self.disp4 = Cost2DisparityAndFeatureRes(nd + 96, 1, interChList)
-        self.disp3 = Cost2DisparityAndFeatureRes(nd + 64, 1, interChList)
-        self.disp2 = Cost2DisparityAndFeatureRes(nd + 32, 1, interChList)
-        self.disp1 = Cost2DisparityAndFeatureRes(nd + 16, 1, interChList, flagUp=False)
+        self.disp4 = Cost2DisparityAndFeatureRes(nd + 96, interChList)
+        self.disp3 = Cost2DisparityAndFeatureRes(nd + 64, interChList)
+        self.disp2 = Cost2DisparityAndFeatureRes(nd + 32, interChList)
+        self.disp1 = Cost2DisparityAndFeatureRes(nd + 16, interChList, flagUp=False)
 
         self.refine = DisparityRefine( nd + 16 + chFeat )
 
@@ -603,7 +600,7 @@ class PWCNetStereoRes(nn.Module):
         cost4 = torch.cat( (cost4, f40), 1 )
 
         # Disparity.
-        disp4, upDisp4, upFeat4 = self.disp4(cost4, upDisp5)
+        disp4, upDisp4 = self.disp4(cost4, upDisp5)
 
         # ========== Scale 3. ==========
         scale = 3
@@ -621,7 +618,7 @@ class PWCNetStereoRes(nn.Module):
         cost3 = torch.cat( (cost3, f30), 1 )
 
         # Disparity.
-        disp3, upDisp3, upFeat3 = self.disp3(cost3, upDisp4)
+        disp3, upDisp3 = self.disp3(cost3, upDisp4)
 
         # ========== Scale 2. ==========
         scale = 2
@@ -639,7 +636,7 @@ class PWCNetStereoRes(nn.Module):
         cost2 = torch.cat( (cost2, f20), 1 )
 
         # Disparity.
-        disp2, upDisp2, upFeat2 = self.disp2(cost2, upDisp3)
+        disp2, upDisp2 = self.disp2(cost2, upDisp3)
 
         # ========== Scale 1. ==========
         scale = 1
