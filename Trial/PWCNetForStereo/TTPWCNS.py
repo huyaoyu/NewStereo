@@ -35,6 +35,17 @@ class TrainTestPWCNetStereo(TrainTestBase):
     def __init__(self, workingDir, frame=None):
         super(TrainTestPWCNetStereo, self).__init__( workingDir, frame )
 
+        self.corrKernelSize = 1
+        self.flowAmp        = 1
+
+    def set_corr_kernel_size(self, k):
+        assert k > 0
+        self.corrKernelSize = int(k)
+
+    def set_flow_amp(self, amp):
+        assert amp >= 1
+        self.flowAmp = amp
+
     # def initialize(self):
     #     self.check_frame()
     #     raise Exception("Not implemented.")
@@ -82,7 +93,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.params = PWCNetStereoParams()
 
         self.params.set_max_disparity( self.maxDisparity )
-        self.params.corrKernelSize = 1
+        self.params.corrKernelSize = self.corrKernelSize
+        self.params.amp = self.flowAmp
         
         # self.model = PWCNetStereo(self.params)
         self.model = PWCNetStereoRes(self.params)
@@ -145,27 +157,35 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
 
-        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False )
-        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False )
-        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False )
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False )
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False )
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
+
+        dispL2 = torch.floor(dispL2)
+        dispL3 = torch.floor(dispL3)
+        dispL4 = torch.floor(dispL4)
+        dispL5 = torch.floor(dispL5)
 
         self.optimizer.zero_grad()
 
         # Forward.
-        disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+        # disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+        disp5 = self.model(imgL, imgR, gradL, gradR)
 
         # import ipdb; ipdb.set_trace()
 
-        loss = \
-              F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-            + F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-            + F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            + F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+        # loss = \
+        #      16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+        #     + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+        #     + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+        #     + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+        #     + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
         # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
+
+        loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
 
         loss.backward()
 
@@ -264,6 +284,114 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
             plt.close(fig)
 
+    def draw_test_results_3x2(self, identifier, predD, trueD, imgL, imgR, trueDP, predDP):
+        """
+        Draw test results.
+
+        predD: Dimension (B, 1, H, W).
+        trueD: Dimension (B, 1, H, W).
+        imgL: Dimension (B, C, H, W).
+        imgR: Dimension (B, C, H, W).
+        """
+
+        batchSize = predD.size()[0]
+        
+        for i in range(batchSize):
+            outDisp = predD[i, 0, :, :].detach().cpu().numpy()
+            gdtDisp = trueD[i, 0, :, :].detach().cpu().numpy()
+            # import ipdb; ipdb.set_trace()
+
+            gdtMin = gdtDisp.min()
+            gdtMax = gdtDisp.max()
+
+            # outDisp = outDisp - outDisp.min()
+            outDisp = outDisp - gdtMin
+            gdtDisp = gdtDisp - gdtMin
+
+            # outDisp = outDisp / outDisp.max()
+            outDisp = np.clip( outDisp / gdtMax, 0.0, 1.0 )
+            gdtDisp = gdtDisp / gdtMax
+
+            # Create a matplotlib figure.
+            fig = plt.figure(figsize=(12.8, 9.6), dpi=300)
+
+            ax = plt.subplot(3, 2, 1)
+            plt.tight_layout()
+            ax.set_title("Ref")
+            ax.axis("off")
+            img0 = imgL[i, :, :, :].permute((1,2,0)).cpu().numpy()
+            img0 = img0 - img0.min()
+            img0 = img0 / img0.max()
+            if ( 1 == img0.shape[2] ):
+                img0 = img0[:, :, 0]
+            plt.imshow( img0 )
+
+            ax = plt.subplot(3, 2, 3)
+            plt.tight_layout()
+            ax.set_title("Tst")
+            ax.axis("off")
+            img1 = imgR[i, :, :, :].permute((1,2,0)).cpu().numpy()
+            img1 = img1 - img1.min()
+            img1 = img1 / img1.max()
+            if ( 1 == img1.shape[2] ):
+                img1 = img1[:, :, 0]
+            plt.imshow( img1 )
+
+            ax = plt.subplot(3, 2, 2)
+            plt.tight_layout()
+            ax.set_title("Ground truth")
+            ax.axis("off")
+            plt.imshow( gdtDisp )
+
+            ax = plt.subplot(3, 2, 4)
+            plt.tight_layout()
+            ax.set_title("Prediction")
+            ax.axis("off")
+            plt.imshow( outDisp )
+
+            trueDPi = trueDP[i, 0, :, :].detach().cpu().numpy()
+            predDPi = predDP[i, 0, :, :].detach().cpu().numpy()
+
+            ax = plt.subplot(3, 2, 5)
+            plt.tight_layout()
+            ax.set_title("TrueDP")
+            ax.axis("off")
+            plt.imshow( trueDPi )
+
+            ax = plt.subplot(3, 2, 6)
+            plt.tight_layout()
+            ax.set_title("PredDP")
+            ax.axis("off")
+            plt.imshow( predDPi )
+
+            figName = "%s_%02d" % (identifier, i)
+            figName = self.frame.compose_file_name(figName, "png", subFolder=self.testResultSubfolder)
+            plt.savefig(figName)
+
+            plt.close(fig)
+
+    def concatenate_disparity(self, dispList, limits):
+        """Use the first element's size to resize all the other tensor in dispList.
+        limits is a 2d list, saving the lower and upper limits of each disparity."""
+
+        H = dispList[0].size()[2]
+        W = dispList[0].size()[3]
+
+        N = len(dispList)
+
+        for i in range(1, N):
+            dispList[i] = F.interpolate( dispList[i], (H, W), mode="bilinear", align_corners=False )
+            # dispList[i] = torch.clamp( limits[i][0], limits[i][1] )
+            dispList[i] = dispList[i] - limits[i][0]
+            dispList[i] = dispList[i] / ( limits[i][1] - limits[i][0] )
+        
+        dispList[0] = dispList[0] - limits[0][0]
+        dispList[0] = dispList[0] / ( limits[0][1] - limits[0][0] )
+
+        C = torch.cat(dispList, dim=2)
+
+        return C
+
     def save_test_disp(self, identifier, pred):
         batchSize = pred.size()[0]
         
@@ -295,24 +423,43 @@ class TrainTestPWCNetStereo(TrainTestBase):
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
 
-        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False )
-        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False )
-        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False )
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False )
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False )
+        dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
+        dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
+        dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
+        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
+
+        dispL2 = torch.floor(dispL2)
+        dispL3 = torch.floor(dispL3)
+        dispL4 = torch.floor(dispL4)
+        dispL5 = torch.floor(dispL5)
 
         with torch.no_grad():
             # Forward.
-            disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+            # disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+            disp5 = self.model(imgL, imgR, gradL, gradR)
             
-            loss = \
-                  F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-                + F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-                + F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-                + F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-                + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+            # loss = \
+            #      16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+            #     + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+            #     + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            #     + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            #     + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
             # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
+
+            loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+
+            # Find all the limits of the ground truth.
+            limits = np.zeros((5,2), dtype=np.float32)
+            limits[0, 0] = dispL1.min(); limits[0, 1] = dispL1.max()
+            limits[1, 0] = dispL2.min(); limits[1, 1] = dispL2.max()
+            limits[2, 0] = dispL3.min(); limits[2, 1] = dispL3.max()
+            limits[3, 0] = dispL4.min(); limits[3, 1] = dispL4.max()
+            limits[4, 0] = dispL5.min(); limits[4, 1] = dispL5.max()
+
+            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, dispL5 ], limits )
+            predDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, disp5  ], limits )
 
         self.countTest += 1
 
@@ -323,8 +470,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        self.draw_test_results( identifier, disp1, dispL1, imgL, imgR )
-        self.save_test_disp( identifier, disp1 )
+        # self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
+        # self.save_test_disp( identifier, disp1 )
+        self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
+        self.save_test_disp( identifier, dispL1 )
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):

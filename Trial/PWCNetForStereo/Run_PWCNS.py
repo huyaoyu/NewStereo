@@ -135,6 +135,9 @@ if __name__ == "__main__":
         else:
             tt.flagInspect = False
 
+        tt.set_corr_kernel_size(args.corr_k)
+        tt.set_flow_amp(args.flow_amp)
+
         # Initialization.
         print_delimeter(title = "Initialize.")
         wf.initialize()

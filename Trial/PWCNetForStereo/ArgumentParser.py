@@ -37,6 +37,12 @@ parser.add_argument("--lr", type=float, default=0.0001, \
 parser.add_argument("--max-disparity", type=int, default=64, \
     help="The maximum disparity without any scale factor.")
 
+parser.add_argument("--corr-k", type=int, default=1, \
+    help="The kernel size of the correlation layer.")
+
+parser.add_argument("--flow-amp", type=float, default=1.0, \
+    help="The amplitude of the amplification of the flow value.")
+
 parser.add_argument("--grayscale", action="store_true", default=False, \
     help="Work on grayscale images.")
 

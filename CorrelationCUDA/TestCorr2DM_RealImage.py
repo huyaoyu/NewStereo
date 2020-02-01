@@ -9,7 +9,7 @@ import torch
 import Corr2D
 import Corr2D_ext
 
-def test_gradcheck(B=1, C=1, H=4, W=4, \
+def test_gradcheck(B=2, C=2, H=4, W=4, \
         padding=1, kernelSize=3, maxDisplacement=1, strideK=1, strideD=1):
 
     print("test_backward()")
