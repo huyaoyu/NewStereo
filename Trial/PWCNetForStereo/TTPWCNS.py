@@ -54,6 +54,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
     def init_workflow(self):
         # === Create the AccumulatedObjects. ===
         self.frame.add_accumulated_value("lossTest", 10)
+        self.frame.add_accumulated_value("TrueDispAvg", 1)
 
         self.frame.AV["loss"].avgWidth = 10
         
@@ -69,6 +70,11 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 WorkFlow.PLTIntermittentPlotter(\
                     self.frame.workingDir + "/IntPlot", 
                     "lossTest", self.frame.AV, ["lossTest"], [True], semiLog=True) )
+            
+            self.frame.AVP.append(\
+                WorkFlow.PLTIntermittentPlotter(\
+                    self.frame.workingDir + "/IntPlot", 
+                    "TrueDispAvg", self.frame.AV, ["TrueDispAvg"], [False], semiLog=False) )
         else:
             self.frame.AVP.append(\
                 WorkFlow.VisdomLinePlotter(\
@@ -77,6 +83,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             self.frame.AVP.append(\
                 WorkFlow.VisdomLinePlotter(\
                     "lossTest", self.frame.AV, ["lossTest"], [True], semiLog=True) )
+
+            self.frame.AVP.append(\
+                WorkFlow.VisdomLinePlotter(\
+                    "TrueDispAvg", self.frame.AV, ["TrueDispAvg"], [False], semiLog=False) )
 
     # def init_workflow(self):
     #     raise Exception("Not implemented.")
@@ -163,35 +173,37 @@ class TrainTestPWCNetStereo(TrainTestBase):
         dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
         dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
 
-        dispL2 = torch.floor(dispL2)
-        dispL3 = torch.floor(dispL3)
-        dispL4 = torch.floor(dispL4)
-        dispL5 = torch.floor(dispL5)
+        # dispL2 = torch.floor(dispL2)
+        # dispL3 = torch.floor(dispL3)
+        # dispL4 = torch.floor(dispL4)
+        # dispL5 = torch.floor(dispL5)
 
         self.optimizer.zero_grad()
 
         # Forward.
-        # disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-        disp5 = self.model(imgL, imgR, gradL, gradR)
+        disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+        # disp5 = self.model(imgL, imgR, gradL, gradR)
 
         # import ipdb; ipdb.set_trace()
 
-        # loss = \
-        #      16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-        #     + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-        #     + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-        #     + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-        #     + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+        loss = \
+             16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+            + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+            + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
         # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
-        loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+        # loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+        # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
 
         loss.backward()
 
         self.optimizer.step()
 
         self.frame.AV["loss"].push_back( loss.item() )
+        self.frame.AV["TrueDispAvg"].push_back( dispL5.mean() )
 
         self.countTrain += 1
 
@@ -429,26 +441,27 @@ class TrainTestPWCNetStereo(TrainTestBase):
         dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
         dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
 
-        dispL2 = torch.floor(dispL2)
-        dispL3 = torch.floor(dispL3)
-        dispL4 = torch.floor(dispL4)
-        dispL5 = torch.floor(dispL5)
+        # dispL2 = torch.floor(dispL2)
+        # dispL3 = torch.floor(dispL3)
+        # dispL4 = torch.floor(dispL4)
+        # dispL5 = torch.floor(dispL5)
 
         with torch.no_grad():
             # Forward.
-            # disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-            disp5 = self.model(imgL, imgR, gradL, gradR)
+            disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+            # disp5 = self.model(imgL, imgR, gradL, gradR)
             
-            # loss = \
-            #      16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-            #     + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-            #     + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            #     + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            #     + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+            loss = \
+                 16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+                + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+                + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
             # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
-            loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+            # loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+            # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
 
             # Find all the limits of the ground truth.
             limits = np.zeros((5,2), dtype=np.float32)
@@ -459,7 +472,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
             limits[4, 0] = dispL5.min(); limits[4, 1] = dispL5.max()
 
             trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, dispL5 ], limits )
-            predDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, disp5  ], limits )
+            predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4, disp5  ], limits )
 
         self.countTest += 1
 
@@ -470,10 +483,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         # Draw and save results.
         identifier = "test_%d" % (count - 1)
-        # self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
-        # self.save_test_disp( identifier, disp1 )
-        self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
-        self.save_test_disp( identifier, dispL1 )
+        self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
+        self.save_test_disp( identifier, disp1 )
+        # self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
+        # self.save_test_disp( identifier, dispL1 )
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):

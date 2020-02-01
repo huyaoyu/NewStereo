@@ -83,7 +83,9 @@ class PredictDisparity(nn.Module):
     def __init__(self, inCh):
         super(PredictDisparity, self).__init__()
 
-        self.model = cm.Conv_W(inCh, 1, activation=nn.LeakyReLU(0.1))
+        self.model = nn.Sequential( \
+            cm.Conv_W(inCh, 64, activation=nn.LeakyReLU(0.1)), \
+            cm.Conv_W(64, 1) )
 
     def forward(self, x):
         return self.model(x)
@@ -576,7 +578,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost5 = self.corr2dm( f50, warp5 )
-        cost5 = self.corrActivation( cost5 )
+        # cost5 = self.corrActivation( cost5 )
 
         # # Concatenate.
         # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
@@ -584,93 +586,93 @@ class PWCNetStereoRes(nn.Module):
         # Disparity.
         disp5, upDisp5, upFeat5 = self.disp5(cost5)
 
-        # # ========== Scale 4. ==========
-        # scale = 4
+        # ========== Scale 4. ==========
+        scale = 4
 
-        # # Warp.
-        # # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
-        # upDisp5 = upDisp5 * ( 2 )
-        # warp4 = self.warp( f41, upDisp5 / self.params.amp )
+        # Warp.
+        # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
+        upDisp5 = upDisp5 * ( 2 )
+        warp4 = self.warp( f41, upDisp5 / self.params.amp )
 
-        # # Correlation.
-        # cost4 = self.corr2dm( f40, warp4 )
+        # Correlation.
+        cost4 = self.corr2dm( f40, warp4 )
         # cost4 = self.corrActivation( cost4 )
 
-        # # Concatenate.
-        # cost4 = torch.cat( (cost4, f40), 1 )
+        # Concatenate.
+        cost4 = torch.cat( (cost4, f40), 1 )
 
-        # # Disparity.
-        # disp4, upDisp4 = self.disp4(cost4, upDisp5)
+        # Disparity.
+        disp4, upDisp4 = self.disp4(cost4, upDisp5)
 
-        # # ========== Scale 3. ==========
-        # scale = 3
+        # ========== Scale 3. ==========
+        scale = 3
 
-        # # Warp.
-        # # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
-        # upDisp4 = upDisp4 * ( 2 )
-        # warp3 = self.warp( f31, upDisp4 / self.params.amp )
+        # Warp.
+        # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
+        upDisp4 = upDisp4 * ( 2 )
+        warp3 = self.warp( f31, upDisp4 / self.params.amp )
 
-        # # Correlation.
-        # cost3 = self.corr2dm( f30, warp3 )
+        # Correlation.
+        cost3 = self.corr2dm( f30, warp3 )
         # cost3 = self.corrActivation( cost3 )
 
-        # # Concatenate.
-        # cost3 = torch.cat( (cost3, f30), 1 )
+        # Concatenate.
+        cost3 = torch.cat( (cost3, f30), 1 )
 
-        # # Disparity.
-        # disp3, upDisp3 = self.disp3(cost3, upDisp4)
+        # Disparity.
+        disp3, upDisp3 = self.disp3(cost3, upDisp4)
 
-        # # ========== Scale 2. ==========
-        # scale = 2
+        # ========== Scale 2. ==========
+        scale = 2
 
-        # # Warp.
-        # # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
-        # upDisp3 = upDisp3 * ( 2 )
-        # warp2 = self.warp( f21, upDisp3 / self.params.amp )
+        # Warp.
+        # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
+        upDisp3 = upDisp3 * ( 2 )
+        warp2 = self.warp( f21, upDisp3 / self.params.amp )
 
-        # # Correlation.
-        # cost2 = self.corr2dm( f20, warp2 )
+        # Correlation.
+        cost2 = self.corr2dm( f20, warp2 )
         # cost2 = self.corrActivation( cost2 )
 
-        # # Concatenate.
-        # cost2 = torch.cat( (cost2, f20), 1 )
+        # Concatenate.
+        cost2 = torch.cat( (cost2, f20), 1 )
 
-        # # Disparity.
-        # disp2, upDisp2 = self.disp2(cost2, upDisp3)
+        # Disparity.
+        disp2, upDisp2 = self.disp2(cost2, upDisp3)
 
-        # # ========== Scale 1. ==========
-        # scale = 1
+        # ========== Scale 1. ==========
+        scale = 1
 
-        # # Warp.
-        # # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
-        # upDisp2 = upDisp2 * ( 2 )
-        # warp1 = self.warp( f11, upDisp2 / self.params.amp )
+        # Warp.
+        # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
+        upDisp2 = upDisp2 * ( 2 )
+        warp1 = self.warp( f11, upDisp2 / self.params.amp )
 
-        # # Correlation.
-        # cost1 = self.corr2dm( f10, warp1 )
+        # Correlation.
+        cost1 = self.corr2dm( f10, warp1 )
         # cost1 = self.corrActivation( cost1 )
 
-        # # Concatenate.
-        # cost1 = torch.cat( (cost1, f10), 1 )
+        # Concatenate.
+        cost1 = torch.cat( (cost1, f10), 1 )
 
-        # # Disparity.
-        # disp1, feat1 = self.disp1(cost1, upDisp2)
+        # Disparity.
+        disp1, feat1 = self.disp1(cost1, upDisp2)
 
-        # # ========== Disparity refinement. ==========
-        # disp1 = self.refine( disp1, feat1 )
+        # ========== Disparity refinement. ==========
+        disp1 = self.refine( disp1, feat1 )
 
-        # # # Final up-sample.
-        # # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
-
-        # if ( self.training ):
-        #     return disp1, disp2, disp3, disp4, disp5 #, disp6
-        # else:
-        #     return disp1, disp2, disp3, disp4, disp5
+        # # Final up-sample.
+        # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
 
         if ( self.training ):
-            return disp5
+            return disp1, disp2, disp3, disp4, disp5 #, disp6
         else:
-            return disp5
+            return disp1, disp2, disp3, disp4, disp5
+
+        # if ( self.training ):
+        #     return disp5
+        # else:
+        #     return disp5
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")
