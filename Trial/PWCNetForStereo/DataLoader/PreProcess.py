@@ -10,13 +10,13 @@ import random
 import torch
 import torchvision.transforms as transforms
 
-__imagenet_stats = {'mean': [0.485, 0.456, 0.406],
+imagenet_stats = {'mean': [0.485, 0.456, 0.406],
                    'std': [0.229, 0.224, 0.225]}
 
-#__imagenet_stats = {'mean': [0.5, 0.5, 0.5],
+#imagenet_stats = {'mean': [0.5, 0.5, 0.5],
 #                   'std': [0.5, 0.5, 0.5]}
 
-__imagenet_pca = {
+imagenet_pca = {
     'eigval': torch.Tensor([0.2175, 0.0188, 0.0045]),
     'eigvec': torch.Tensor([
         [-0.5675,  0.7192,  0.4009],
@@ -59,16 +59,21 @@ class SingleChannel(object):
         return x[0].view( ( 1, x.size()[1], x.size()[2] ) )
 
 class NormalizeRGB_OCV(object):
+    def __init__(self, s):
+        super(NormalizeRGB_OCV, self).__init__()
+        
+        self.s = s
+
     def __call__(self, x):
         """This is the OpenCV version. The order of the color channle is BGR. The order of dimension is HWC."""
 
-        x = x.clone()
+        x = np.copy(x) * self.s
 
         # It is assumed that the data type of x is already floating point number.
 
-        x[:, :, 0] = ( x[:, :, 0] - __imagenet_stats["mean"][2] ) / __imagenet_stats["std"][2]
-        x[:, :, 1] = ( x[:, :, 1] - __imagenet_stats["mean"][1] ) / __imagenet_stats["std"][1]
-        x[:, :, 2] = ( x[:, :, 2] - __imagenet_stats["mean"][0] ) / __imagenet_stats["std"][0]
+        x[:, :, 0] = ( x[:, :, 0] - imagenet_stats["mean"][2] ) / imagenet_stats["std"][2]
+        x[:, :, 1] = ( x[:, :, 1] - imagenet_stats["mean"][1] ) / imagenet_stats["std"][1]
+        x[:, :, 2] = ( x[:, :, 2] - imagenet_stats["mean"][0] ) / imagenet_stats["std"][0]
 
         return x
 

@@ -105,6 +105,9 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.params.set_max_disparity( self.maxDisparity )
         self.params.corrKernelSize = self.corrKernelSize
         self.params.amp = self.flowAmp
+
+        if ( self.flagGrayscale ):
+            self.params.flagGray = True
         
         # self.model = PWCNetStereo(self.params)
         self.model = PWCNetStereoRes(self.params)
@@ -161,8 +164,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             imgL  = imgL.cuda()
             imgR  = imgR.cuda()
             dispL = dispL.cuda()
-            gradL = gradL.cuda()
-            gradR = gradR.cuda()
+
+            if ( self.flagSobelX ):
+                gradL = gradL.cuda()
+                gradR = gradR.cuda()
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -182,7 +187,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         # Forward.
         disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-        # disp5 = self.model(imgL, imgR, gradL, gradR)
+
+        # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
 
         # import ipdb; ipdb.set_trace()
 
@@ -193,9 +199,13 @@ class TrainTestPWCNetStereo(TrainTestBase):
             + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
             + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
+        # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+
         # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
-        # loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+        # loss = \
+        #     2*F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+        #     + F.smooth_l1_loss( disp4, dispL4, reduction="mean" )
         # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
 
         loss.backward()
@@ -203,7 +213,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.step()
 
         self.frame.AV["loss"].push_back( loss.item() )
-        self.frame.AV["TrueDispAvg"].push_back( dispL5.mean() )
+        self.frame.AV["TrueDispAvg"].push_back( dispL1.mean() )
 
         self.countTrain += 1
 
@@ -417,7 +427,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
             np.savetxt( fn, disp, fmt="%+.6f" )
 
     # Overload parent's function.
-    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount):
+    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount, flagSave=True):
         self.check_frame()
 
         if ( True == self.flagInfer ):
@@ -429,8 +439,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             imgL  = imgL.cuda()
             imgR  = imgR.cuda()
             dispL = dispL.cuda()
-            gradL = gradL.cuda()
-            gradR = gradR.cuda()
+
+            if ( self.flagSobelX ):
+                gradL = gradL.cuda()
+                gradR = gradR.cuda()
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -449,7 +461,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         with torch.no_grad():
             # Forward.
             disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-            # disp5 = self.model(imgL, imgR, gradL, gradR)
+
+            # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
             
             loss = \
                  16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
@@ -458,9 +471,13 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
                 + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
+            # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+
             # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
 
-            # loss = F.smooth_l1_loss( disp5, dispL5, reduction="mean" )
+            # loss = \
+            #     2*F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+            #     + F.smooth_l1_loss( disp4, dispL4, reduction="mean" )
             # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
 
             # Find all the limits of the ground truth.
@@ -481,12 +498,13 @@ class TrainTestPWCNetStereo(TrainTestBase):
         else:
             count = self.countTrain
 
-        # Draw and save results.
-        identifier = "test_%d" % (count - 1)
-        self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
-        self.save_test_disp( identifier, disp1 )
-        # self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
-        # self.save_test_disp( identifier, dispL1 )
+        if ( flagSave ):
+            # Draw and save results.
+            identifier = "test_%d" % (count - 1)
+            self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
+            self.save_test_disp( identifier, disp1 )
+            # self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
+            # self.save_test_disp( identifier, dispL1 )
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):

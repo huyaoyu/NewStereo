@@ -86,6 +86,9 @@ class PredictDisparity(nn.Module):
         self.model = nn.Sequential( \
             cm.Conv_W(inCh, 64, activation=nn.LeakyReLU(0.1)), \
             cm.Conv_W(64, 1) )
+        
+        # self.model = \
+        #     cm.Conv_W(inCh, 1, activation=nn.LeakyReLU(0.1))
 
     def forward(self, x):
         return self.model(x)
@@ -182,12 +185,70 @@ class DisparityRefine(nn.Module):
             nn.Conv2d(128,  128, kernel_size=3, stride=1, padding=4,  dilation=4,  bias=True), nn.LeakyReLU(0.1), \
             nn.Conv2d(128,  96,  kernel_size=3, stride=1, padding=8,  dilation=8,  bias=True), nn.LeakyReLU(0.1), \
             nn.Conv2d(96,   64,  kernel_size=3, stride=1, padding=16, dilation=16, bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(64,   32,  kernel_size=3, stride=1, padding=1,  dilation=1,  bias=True), nn.LeakyReLU(0.1), \
-            PredictDisparity(32) \
+            nn.Conv2d(64,   64,  kernel_size=3, stride=1, padding=1,  dilation=1,  bias=True), nn.LeakyReLU(0.1), \
+            PredictDisparity(64) \
              )
 
     def forward(self, disp, fe):
         return self.model(fe) + disp
+
+class EDRegression(nn.Module):
+    def __init__(self, inCh):
+        super(EDRegression, self).__init__()
+
+        self.encoder0_In  = inCh
+        self.encoder0_Out = 128
+        self.encoder1_In  = self.encoder0_Out
+        self.encoder1_Out = self.encoder1_In * 2
+        self.encoder2_In  = self.encoder1_Out
+        self.encoder2_Out = self.encoder2_In
+        
+        self.decoder3_In  = self.encoder2_Out
+        self.decoder3_Out = self.decoder3_In // 2
+        self.decoder2_In  = self.decoder3_Out
+        self.decoder2_Out = self.decoder3_Out
+        self.decoder1_In  = self.decoder2_Out + self.encoder1_Out
+        self.decoder1_Out = self.decoder3_Out
+        self.decoder0_In  = self.decoder1_Out + self.encoder0_Out
+        self.decoder0_Out = 128
+
+        # Encoder-decoder.
+        self.e0 = cm.Conv_Half( self.encoder0_In, self.encoder0_Out, k=3, activation=cm.SelectedReLU() )
+        self.e1 = cm.Conv_Half( self.encoder1_In, self.encoder1_Out, k=3, activation=cm.SelectedReLU() )
+        self.e2 = cm.Conv_Half( self.encoder2_In, self.encoder2_Out, k=3, activation=cm.SelectedReLU() )
+
+        self.d3 = cm.Conv_W( self.decoder3_In, self.decoder3_Out, k=3, activation=cm.SelectedReLU() )
+        self.d2 = cm.Deconv_DoubleSize( self.decoder2_In, self.decoder2_Out, k=4, p=1, activation=cm.SelectedReLU() )
+        self.d1 = cm.Deconv_DoubleSize( self.decoder1_In, self.decoder1_Out, k=4, p=1, activation=cm.SelectedReLU() )
+        self.d0 = cm.Deconv_DoubleSize( self.decoder0_In, self.decoder0_Out, k=4, p=1, activation=cm.SelectedReLU() )
+
+        # Regression.
+        self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
+        self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
+        self.rg1 = cm.Conv_W( 64, 1, k=3 )
+
+    def forward(self, x):
+        fe0 = self.e0(x)
+        fe1 = self.e1(fe0)
+        fe2 = self.e2(fe1)
+
+        # import ipdb; ipdb.set_trace()
+
+        fd3 = self.d3(fe2)
+        fd2 = self.d2(fd3)
+        fd2 = torch.cat( (fd2, fe1), 1 )
+        fd1 = self.d1(fd2)
+        fd1 = torch.cat( (fd1, fe0), 1 )
+        fd0 = self.d0(fd1)
+
+        # By-pass.
+        bp = self.bp(x)
+
+        # Regression.
+        disp0 = self.rg0( fd0 + bp.mul(0.1) )
+        disp1 = self.rg1( disp0 )
+
+        return disp1
 
 class WarpByDisparity(nn.Module):
     def __init__(self):
@@ -242,6 +303,8 @@ class PWCNetStereoParams(object):
     def __init__(self):
         super(PWCNetStereoParams, self).__init__()
 
+        self.flagGray = False
+
         self.amp = 1
 
         self.maxDisp = 4
@@ -265,7 +328,11 @@ class PWCNetStereo(nn.Module):
         self.params = params
 
         # Feature extractors.
-        self.fe1 = ConvExtractor(  1,  16)
+        if ( self.params.flagGray ):
+            self.fe1 = ConvExtractor( 1, 16)
+        else:
+            self.fe1 = ConvExtractor( 3, 16)
+
         self.fe2 = ConvExtractor( 16,  32)
         self.fe3 = ConvExtractor( 32,  64)
         self.fe4 = ConvExtractor( 64,  96)
@@ -472,11 +539,17 @@ class PWCNetStereoRes(nn.Module):
         self.params = params
 
         # Feature extractors.
-        self.fe1 = ConvExtractor(  1,  16)
-        self.fe2 = ConvExtractor( 16,  32)
+        if ( self.params.flagGray ):
+            self.fe1 = ConvExtractor( 1, 32)
+            self.re1 = ConvExtractor( 1, 32)
+        else:
+            self.fe1 = ConvExtractor( 3, 32)
+            self.re1 = ConvExtractor( 3, 32)
+        
+        self.fe2 = ConvExtractor( 32,  32)
         self.fe3 = ConvExtractor( 32,  64)
-        self.fe4 = ConvExtractor( 64,  96)
-        self.fe5 = ConvExtractor( 96, 128)
+        self.fe4 = ConvExtractor( 64,  128)
+        self.fe5 = ConvExtractor( 128, 256)
         # self.fe6 = ConvExtractor(128, 196)
 
         # import ipdb; ipdb.set_trace()
@@ -488,21 +561,22 @@ class PWCNetStereoRes(nn.Module):
             strideK=self.params.corrStrideK, \
             strideD=self.params.corrStrideD )
 
-        self.corrActivation = nn.LeakyReLU(0.1)
-
         nd = self.params.maxDisp + 1 + self.params.maxDisp
+
+        self.corrActivation = cm.Conv_W(nd, nd, k=1)
 
         # Disparity at various scale.
         interChList = [ 128, 128, 96, 64, 32 ]
         chFeat      = np.sum( interChList )
 
         self.disp5 = Cost2DisparityAndFeature(nd, 1, interChList)
-        self.disp4 = Cost2DisparityAndFeatureRes(nd + 96, interChList)
+        self.disp4 = Cost2DisparityAndFeatureRes(nd + 128, interChList)
         self.disp3 = Cost2DisparityAndFeatureRes(nd + 64, interChList)
         self.disp2 = Cost2DisparityAndFeatureRes(nd + 32, interChList)
-        self.disp1 = Cost2DisparityAndFeatureRes(nd + 16, interChList, flagUp=False)
+        self.disp1 = Cost2DisparityAndFeatureRes(nd + 32, interChList, flagUp=False)
 
-        self.refine = DisparityRefine( nd + 16 + chFeat )
+        # self.refine = DisparityRefine( nd + 32 + chFeat )
+        self.refine = EDRegression( 32 + 1 )
 
         # Warp.
         self.warp = WarpByDisparity()
@@ -578,7 +652,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost5 = self.corr2dm( f50, warp5 )
-        # cost5 = self.corrActivation( cost5 )
+        cost5 = self.corrActivation( cost5 )
 
         # # Concatenate.
         # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
@@ -596,7 +670,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost4 = self.corr2dm( f40, warp4 )
-        # cost4 = self.corrActivation( cost4 )
+        cost4 = self.corrActivation( cost4 )
 
         # Concatenate.
         cost4 = torch.cat( (cost4, f40), 1 )
@@ -614,7 +688,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost3 = self.corr2dm( f30, warp3 )
-        # cost3 = self.corrActivation( cost3 )
+        cost3 = self.corrActivation( cost3 )
 
         # Concatenate.
         cost3 = torch.cat( (cost3, f30), 1 )
@@ -632,7 +706,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost2 = self.corr2dm( f20, warp2 )
-        # cost2 = self.corrActivation( cost2 )
+        cost2 = self.corrActivation( cost2 )
 
         # Concatenate.
         cost2 = torch.cat( (cost2, f20), 1 )
@@ -650,7 +724,7 @@ class PWCNetStereoRes(nn.Module):
 
         # Correlation.
         cost1 = self.corr2dm( f10, warp1 )
-        # cost1 = self.corrActivation( cost1 )
+        cost1 = self.corrActivation( cost1 )
 
         # Concatenate.
         cost1 = torch.cat( (cost1, f10), 1 )
@@ -659,7 +733,11 @@ class PWCNetStereoRes(nn.Module):
         disp1, feat1 = self.disp1(cost1, upDisp2)
 
         # ========== Disparity refinement. ==========
-        disp1 = self.refine( disp1, feat1 )
+        # disp1 = self.refine( disp1, feat1 )
+        r10 = self.re1(gray0)
+
+        dispRe1 = self.refine( torch.cat((r10, disp1), 1) )
+        disp1 = disp1 + dispRe1
 
         # # Final up-sample.
         # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
@@ -670,9 +748,9 @@ class PWCNetStereoRes(nn.Module):
             return disp1, disp2, disp3, disp4, disp5
 
         # if ( self.training ):
-        #     return disp5
+        #     return disp5, disp4
         # else:
-        #     return disp5
+        #     return disp5, disp4
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")

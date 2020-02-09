@@ -119,6 +119,16 @@ class myImageFolder(data.Dataset):
 
         self.dispWhiteNoiseLevel = 0.05
 
+        self.flagGray  = False
+        self.flagGradX = False
+
+    def enable_gray(self):
+        self.flagGray = True
+
+    def enable_grad_x(self):
+        self.flagGray  = True
+        self.flagGradX = True
+
     def self_normalize(self, x):
         """
         x is an OpenCV mat.
@@ -275,15 +285,16 @@ class myImageFolder(data.Dataset):
                     self.center_crop_image_and_disparity( imgL, imgR, dispL )
 
         # Grayscale and gradient.
-        imgL, gradL = convert_2_gray_gradx(imgL)
-        imgR, gradR = convert_2_gray_gradx(imgR)
+        if ( self.flagGray ):
+            imgL, gradL = convert_2_gray_gradx(imgL)
+            imgR, gradR = convert_2_gray_gradx(imgR)
 
         # Image pre-processing.
         if ( self.preprocessorImg is not None ):
             imgL  = self.preprocessorImg(imgL.astype(np.float32))
             imgR  = self.preprocessorImg(imgR.astype(np.float32))
         
-        if ( self.preprocessorGrad is not None ):
+        if ( self.flagGradX and self.preprocessorGrad is not None ):
             gradL = self.preprocessorGrad(gradL)
             gradR = self.preprocessorGrad(gradR)
         
@@ -291,7 +302,11 @@ class myImageFolder(data.Dataset):
         if ( self.preprocessorDisp is not None ):
             dispL  = self.preprocessorDisp(dispL)
 
-        return imgL, imgR, dispL, gradL, gradR
+        if ( self.flagGradX ):
+            return imgL, imgR, dispL, gradL, gradR
+        else:
+            return imgL, imgR, dispL, \
+                torch.zeros((1), dtype=torch.float), torch.zeros((1), dtype=torch.float)
 
     def __len__(self):
         return len(self.left)

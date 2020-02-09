@@ -300,11 +300,17 @@ class TrainTestBase(object):
 
         # Dataloader.
         if ( self.dlResize[0] != 0 and self.dlResize[1] != 0 ):
-            preprocessor = transforms.Compose( [ \
-                PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
-                PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
-                transforms.ToTensor(), \
-                PreProcess.SingleChannel() ] )
+            if ( self.flagGrayscale ):
+                preprocessor = transforms.Compose( [ \
+                    PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
+                    PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
+                    transforms.ToTensor(), \
+                    PreProcess.SingleChannel() ] )
+            else:
+                preprocessor = transforms.Compose( [ \
+                    PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
+                    PreProcess.NormalizeRGB_OCV(1.0/255), \
+                    transforms.ToTensor() ] )
 
             preprocessorGrad = transforms.Compose( [ \
                 PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
@@ -316,10 +322,15 @@ class TrainTestBase(object):
                 PreProcess.ResizeDisparityNoTensor(self.dlResize[0], self.dlResize[1]), \
                 transforms.ToTensor() ] )
         else:
-            preprocessor = transforms.Compose( [ \
-                PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
-                transforms.ToTensor(), \
-                PreProcess.SingleChannel() ] )
+            if ( self.flagGrayscale ):
+                preprocessor = transforms.Compose( [ \
+                    PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
+                    transforms.ToTensor(), \
+                    PreProcess.SingleChannel() ] )
+            else:
+                preprocessor = transforms.Compose( [ \
+                    PreProcess.NormalizeRGB_OCV(1.0/255), \
+                    transforms.ToTensor() ] )
             
             preprocessorGrad = transforms.Compose( [ \
                 PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
@@ -348,6 +359,14 @@ class TrainTestBase(object):
             self.imgInferLoader = torch.utils.data.DataLoader( \
                 self.datasetInfer, \
                 batch_size=1, shuffle=False, num_workers=self.dlNumWorkers, drop_last=self.dlDropLast )
+
+        if ( self.flagGrayscale ):
+            self.datasetTrain.enable_gray()
+            self.datasetTest.enable_gray()
+
+        if ( self.flagSobelX ):
+            self.datasetTrain.enable_grad_x()
+            self.datasetTrain.enable_grad_x()
 
     def init_model(self):
         raise Exception("init_model() virtual interface.")

@@ -1,6 +1,7 @@
 
 from __future__ import print_function
 
+import numpy as np
 import time
 
 from workflow import WorkFlow, TorchFlow
@@ -57,12 +58,12 @@ class MyWF(TorchFlow.TorchFlow):
         return self.tt.train(imgL, imgR, dispL, gradL, gradR, epochCount)
         
     # Overload the function test().
-    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount):
+    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount, flagSave=True):
         super(MyWF, self).test()
 
         self.check_tt()
 
-        return self.tt.test(imgL, imgR, dispL, gradL, gradR, epochCount)
+        return self.tt.test(imgL, imgR, dispL, gradL, gradR, epochCount, flagSave)
 
     def infer(self, imgL, imgR, gradL, Q):
 
@@ -113,6 +114,13 @@ if __name__ == "__main__":
         tt.set_data_loader_params( \
             args.dl_batch_size, not args.dl_disable_shuffle, args.dl_num_workers, args.dl_drop_last, \
             cropTrain=cropTrain, cropTest=cropTest, newSize=newSize )
+        
+        if ( args.grayscale ):
+            tt.enable_grayscale()
+        
+        if ( args.sobel_x ):
+            tt.enable_Sobel_x()
+
         tt.set_dataset_root_dir( args.data_root_dir, args.data_entries, args.data_file_list )
         tt.set_read_model( args.read_model )
         tt.set_read_optimizer( args.read_optimizer )
@@ -135,6 +143,7 @@ if __name__ == "__main__":
         else:
             tt.flagInspect = False
 
+        tt.set_max_disparity(args.max_disparity)
         tt.set_corr_kernel_size(args.corr_k)
         tt.set_flow_amp(args.flow_amp)
 
@@ -183,17 +192,27 @@ if __name__ == "__main__":
                 print_delimeter(title="Testing loops.")
 
                 totalLoss = 0
+                testLossList = []
 
                 for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTestLoader ):
-                    # loss = wf.test( imgL, imgR, dispL, gradL, gradR, 0 )
+                    loss = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
 
                     if ( True == tt.flagInspect ):
                         wf.logger.warning("Inspection enabled.")
 
-                    # wf.logger.info("Test %d, loss = %f." % ( batchIdx, loss ))
-                    # totalLoss += loss
+                    wf.logger.info("Test %d, lossTest = %f." % ( batchIdx, loss ))
+                    totalLoss += loss
 
-                # wf.logger.info("Average loss = %f." % ( totalLoss / nTests ))
+                    testLossList.append( [ imgL.size()[0], loss ] )
+
+                    if ( args.test_loops > 0 and batchIdx >= args.test_loops - 1 ):
+                        break
+
+                wf.logger.info("Average loss = %f." % ( totalLoss / nTests ))
+
+                # Save the loss values to file the working directory.
+                testResultSummaryFn = wf.compose_file_name("BatchTest", "dat", subFolder=tt.testResultSubfolder)
+                np.savetxt( testResultSummaryFn, testLossList)
         else:
             wf.logger.info("Begin inferring.")
             print_delimeter(title="Inferring loops.")
