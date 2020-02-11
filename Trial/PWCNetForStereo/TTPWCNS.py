@@ -186,18 +186,19 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.zero_grad()
 
         # Forward.
-        disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+        disp0, disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
 
         # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
 
         # import ipdb; ipdb.set_trace()
 
         loss = \
-             16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-            + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-            + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+              32 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+            + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+            +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+            +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
         # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
@@ -213,7 +214,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.step()
 
         self.frame.AV["loss"].push_back( loss.item() )
-        self.frame.AV["TrueDispAvg"].push_back( dispL1.mean() )
+        self.frame.AV["TrueDispAvg"].push_back( dispL.mean() )
 
         self.countTrain += 1
 
@@ -460,16 +461,17 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         with torch.no_grad():
             # Forward.
-            disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
+            disp0, disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
 
             # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
             
             loss = \
-                 16 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-                + 8 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-                + 4 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-                + 2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-                + F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
+                  32 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
+                + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
+                +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+                +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
             # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
@@ -501,8 +503,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         if ( flagSave ):
             # Draw and save results.
             identifier = "test_%d" % (count - 1)
-            self.draw_test_results_3x2( identifier, disp1, dispL1, imgL, imgR, trueDP, predDP )
-            self.save_test_disp( identifier, disp1 )
+            self.draw_test_results_3x2( identifier, disp0, dispL, imgL, imgR, trueDP, predDP )
+            self.save_test_disp( identifier, disp0 )
             # self.draw_test_results_3x2( identifier, dispL1, dispL1, imgL, imgR, trueDP, predDP )
             # self.save_test_disp( identifier, dispL1 )
 

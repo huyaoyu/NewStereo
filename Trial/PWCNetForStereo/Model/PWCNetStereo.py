@@ -222,8 +222,11 @@ class EDRegression(nn.Module):
         self.d1 = cm.Deconv_DoubleSize( self.decoder1_In, self.decoder1_Out, k=4, p=1, activation=cm.SelectedReLU() )
         self.d0 = cm.Deconv_DoubleSize( self.decoder0_In, self.decoder0_Out, k=4, p=1, activation=cm.SelectedReLU() )
 
+        # self.finalUp = cm.Deconv_DoubleSize( self.decoder0_Out, 64, k=4, p=1, activation=cm.SelectedReLU() )
+
         # Regression.
         self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
+        
         self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
         self.rg1 = cm.Conv_W( 64, 1, k=3 )
 
@@ -240,6 +243,7 @@ class EDRegression(nn.Module):
         fd1 = self.d1(fd2)
         fd1 = torch.cat( (fd1, fe0), 1 )
         fd0 = self.d0(fd1)
+        # fd0 = self.finalUp(fd0)
 
         # By-pass.
         bp = self.bp(x)
@@ -541,10 +545,14 @@ class PWCNetStereoRes(nn.Module):
         # Feature extractors.
         if ( self.params.flagGray ):
             self.fe1 = ConvExtractor( 1, 32)
-            self.re1 = ConvExtractor( 1, 32)
+            self.re1 = nn.Sequential( \
+                ConvExtractor( 1, 32), \
+                cm.Deconv_DoubleSize( 32, 32, k=4, p=1, activation=cm.SelectedReLU() ) )
         else:
             self.fe1 = ConvExtractor( 3, 32)
-            self.re1 = ConvExtractor( 3, 32)
+            self.re1 = nn.Sequential( \
+                ConvExtractor( 3, 32), \
+                cm.Deconv_DoubleSize( 32, 32, k=4, p=1, activation=cm.SelectedReLU() ) )
         
         self.fe2 = ConvExtractor( 32,  32)
         self.fe3 = ConvExtractor( 32,  64)
@@ -732,20 +740,20 @@ class PWCNetStereoRes(nn.Module):
         # Disparity.
         disp1, feat1 = self.disp1(cost1, upDisp2)
 
+        # Final up-sample.
+        disp0 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False )
+
         # ========== Disparity refinement. ==========
         # disp1 = self.refine( disp1, feat1 )
         r10 = self.re1(gray0)
 
-        dispRe1 = self.refine( torch.cat((r10, disp1), 1) )
-        disp1 = disp1 + dispRe1
-
-        # # Final up-sample.
-        # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
+        dispRe0 = self.refine( torch.cat((r10, disp0), 1) )
+        disp0 = disp0 + dispRe0
 
         if ( self.training ):
-            return disp1, disp2, disp3, disp4, disp5 #, disp6
+            return disp0, disp1, disp2, disp3, disp4, disp5 #, disp6
         else:
-            return disp1, disp2, disp3, disp4, disp5
+            return disp0, disp1, disp2, disp3, disp4, disp5
 
         # if ( self.training ):
         #     return disp5, disp4
