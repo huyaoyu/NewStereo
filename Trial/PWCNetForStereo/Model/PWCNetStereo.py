@@ -49,6 +49,20 @@ class ConvExtractor(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+class FeatureNormalization(nn.Module):
+    def __init__(self, inCh):
+        super(FeatureNormalization, self).__init__()
+
+        assert inCh > 0
+
+        # if ( cm.is_odd(inCh) ):
+        #     raise Exception("inCh = {} which is not an even number.".format(inCh))
+
+        self.model = nn.BatchNorm2d(inCh, track_running_stats=False)
+
+    def forward(self, x):
+        return self.model(x)
+
 class CostRegulator(nn.Module):
     def __init__(self, inCh, interChList, lastActivation=None):
         super(CostRegulator, self).__init__()
@@ -562,6 +576,13 @@ class PWCNetStereoRes(nn.Module):
 
         # import ipdb; ipdb.set_trace()
 
+        # Batch normalization layers.
+        self.fn1 = FeatureNormalization(32)
+        self.fn2 = FeatureNormalization(32)
+        self.fn3 = FeatureNormalization(64)
+        self.fn4 = FeatureNormalization(128)
+        self.fn5 = FeatureNormalization(256)
+
         # Correlation.
         self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
             padding=self.params.corrPadding, \
@@ -658,6 +679,10 @@ class PWCNetStereoRes(nn.Module):
         # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
         warp5 = f51
 
+        # Normalization
+        f50   = self.fn5(f50)
+        warp5 = self.fn5(warp5)
+
         # Correlation.
         cost5 = self.corr2dm( f50, warp5 )
         cost5 = self.corrActivation( cost5 )
@@ -675,6 +700,10 @@ class PWCNetStereoRes(nn.Module):
         # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
         upDisp5 = upDisp5 * ( 2 )
         warp4 = self.warp( f41, upDisp5 / self.params.amp )
+
+        # Normalization
+        f40   = self.fn4(f40)
+        warp4 = self.fn4(warp4)
 
         # Correlation.
         cost4 = self.corr2dm( f40, warp4 )
@@ -694,6 +723,10 @@ class PWCNetStereoRes(nn.Module):
         upDisp4 = upDisp4 * ( 2 )
         warp3 = self.warp( f31, upDisp4 / self.params.amp )
 
+        # Normalization
+        f30   = self.fn3(f30)
+        warp3 = self.fn3(warp3)
+
         # Correlation.
         cost3 = self.corr2dm( f30, warp3 )
         cost3 = self.corrActivation( cost3 )
@@ -711,6 +744,10 @@ class PWCNetStereoRes(nn.Module):
         # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
         upDisp3 = upDisp3 * ( 2 )
         warp2 = self.warp( f21, upDisp3 / self.params.amp )
+
+        # Normalization
+        f20   = self.fn2(f20)
+        warp2 = self.fn2(warp2)
 
         # Correlation.
         cost2 = self.corr2dm( f20, warp2 )
@@ -730,6 +767,10 @@ class PWCNetStereoRes(nn.Module):
         upDisp2 = upDisp2 * ( 2 )
         warp1 = self.warp( f11, upDisp2 / self.params.amp )
 
+        # Normalization
+        f10   = self.fn1(f10)
+        warp1 = self.fn1(warp1)
+
         # Correlation.
         cost1 = self.corr2dm( f10, warp1 )
         cost1 = self.corrActivation( cost1 )
@@ -741,7 +782,7 @@ class PWCNetStereoRes(nn.Module):
         disp1, feat1 = self.disp1(cost1, upDisp2)
 
         # Final up-sample.
-        disp0 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False )
+        disp0 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
 
         # ========== Disparity refinement. ==========
         # disp1 = self.refine( disp1, feat1 )
