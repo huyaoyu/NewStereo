@@ -5,7 +5,7 @@ import numpy as np
 def apply_metrics(dispT, dispP, mask=None, resize=None):
     """
     dispT: The true disparity. A 3D NumPy array. (B, H, W) where B is the minibach number.
-    mask: The mask array. A 2D NumPy array. 1-element of mask will be used in metrics computation.
+    mask: The mask array. A 3D NumPy array. 1-element of mask will be used in metrics computation.
     dispP: The predicted disparity. A 3D Numpy array. (B, H, W) where B is the minibach number.
     resize: If it is not None, it should be a 2-element tuple or list. The order of the numbers is
     ( rH, rW ), meaning the new height and width to be used by resizing dispT. The true disparity value 
@@ -48,11 +48,9 @@ def apply_metrics(dispT, dispP, mask=None, resize=None):
 
     # Apply mask.
     if ( mask is not None ):
-        mask  = mask.reshape( ( mask.shape[0]*mask.shape[1], ) )
+        mask  = mask.reshape( ( -1, mask.shape[1]*mask.shape[2], ) )
         mask  = mask == 1
-        dispT = dispT[:, mask]
-        dispP = dispP[:, mask]
-        N = np.sum( mask )
+        N     = np.sum( mask, axis=1 ).reshape((-1,1))
     
     # Compute difference.
     diff = np.abs( dispT - dispP )
@@ -62,25 +60,31 @@ def apply_metrics(dispT, dispP, mask=None, resize=None):
 
     # 1-pixel.
     maskDiff = diff > 1
+    maskDiff = maskDiff * mask
     metrics[:, 0] = maskDiff.sum( axis=1 ).astype(np.float32) / N
 
     # 2-pixel.
     maskDiff = diff > 2
+    maskDiff = maskDiff * mask
     metrics[:, 1] = maskDiff.sum( axis=1 ).astype(np.float32) / N
 
     # 3-pixel.
     maskDiff = diff > 3
+    maskDiff = maskDiff * mask
     metrics[:, 2] = maskDiff.sum( axis=1 ).astype(np.float32) / N
 
     # 4-pixel.
     maskDiff = diff > 4
+    maskDiff = maskDiff * mask
     metrics[:, 3] = maskDiff.sum( axis=1 ).astype(np.float32) / N
 
     # 5-pixel.
     maskDiff = diff > 5
+    maskDiff = maskDiff * mask
     metrics[:, 4] = maskDiff.sum( axis=1 ).astype(np.float32) / N
-
+    
     # End point error.
+    diff = diff * mask
     metrics[:, 5] = diff.sum( axis=1 ).astype(np.float32) / N
 
     return metrics

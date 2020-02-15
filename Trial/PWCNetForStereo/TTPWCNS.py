@@ -496,7 +496,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4, disp5  ], limits )
 
             # Apply metrics.
-            metrics = metrics_KITTI( dispL.squeeze(1).cpu().numpy(), disp0.squeeze(1).cpu().numpy() )
+            dispLNP = dispL.squeeze(1).cpu().numpy()
+            mask    = dispLNP <= 128
+            mask    = mask.astype(np.int)
+            metrics = metrics_KITTI( dispLNP, disp0.squeeze(1).cpu().numpy(), mask )
 
         self.countTest += 1
 
