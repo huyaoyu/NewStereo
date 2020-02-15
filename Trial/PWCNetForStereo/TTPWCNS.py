@@ -15,6 +15,8 @@ from workflow import WorkFlow, TorchFlow
 from TTBase import TrainTestBase
 from Model.PWCNetStereo import PWCNetStereo, PWCNetStereoRes, PWCNetStereoParams
 
+from Metric.MetricKITTI import apply_metrics as metrics_KITTI
+
 from CommonPython.PointCloud.PLYHelper import write_PLY
 
 import matplotlib.pyplot as plt
@@ -493,6 +495,9 @@ class TrainTestPWCNetStereo(TrainTestBase):
             trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, dispL5 ], limits )
             predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4, disp5  ], limits )
 
+            # Apply metrics.
+            metrics = metrics_KITTI( dispL.squeeze(1).cpu().numpy(), disp0.squeeze(1).cpu().numpy() )
+
         self.countTest += 1
 
         if ( True == self.flagTest ):
@@ -517,7 +522,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
         if ( flagSave ):
             self.frame.plot_accumulated_values()
 
-        return loss.item()
+        return loss.item(), metrics
 
     def infer(self, imgL, imgR, gradL, gradR, Q):
         self.check_frame()

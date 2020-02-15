@@ -191,24 +191,34 @@ if __name__ == "__main__":
                 wf.logger.info("Begin testing.")
                 print_delimeter(title="Testing loops.")
 
-                totalLoss = 0
                 testLossList = []
 
                 for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTestLoader ):
-                    loss = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
+                    loss, metrics = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
 
                     if ( True == tt.flagInspect ):
                         wf.logger.warning("Inspection enabled.")
 
                     wf.logger.info("Test %d, lossTest = %f." % ( batchIdx, loss ))
-                    totalLoss += loss
 
-                    testLossList.append( [ imgL.size()[0], loss ] )
+                    testLossList.append( [ imgL.size()[0], loss, *(np.mean(metrics, axis=0).tolist()) ] )
 
                     if ( args.test_loops > 0 and batchIdx >= args.test_loops - 1 ):
                         break
 
-                wf.logger.info("Average loss = %f." % ( totalLoss / nTests ))
+                # import ipdb; ipdb.set_trace()
+
+                testLossAndMetrics = np.array(testLossList, dtype=np.float32)
+                scaledLossAndMetrics = testLossAndMetrics[:, 1:] * testLossAndMetrics[:, 0].reshape((-1,1))
+                averagedLossAndMetrics = np.mean(scaledLossAndMetrics, axis=0)
+
+                wf.logger.info("Average loss = %f." % ( averagedLossAndMetrics[0] ))
+                wf.logger.info("Average 1-pixel error rate = %f." % ( averagedLossAndMetrics[1] ))
+                wf.logger.info("Average 2-pixel error rate = %f." % ( averagedLossAndMetrics[2] ))
+                wf.logger.info("Average 3-pixel error rate = %f." % ( averagedLossAndMetrics[3] ))
+                wf.logger.info("Average 4-pixel error rate = %f." % ( averagedLossAndMetrics[4] ))
+                wf.logger.info("Average 5-pixel error rate = %f." % ( averagedLossAndMetrics[5] ))
+                wf.logger.info("Average end point error = %f." % ( averagedLossAndMetrics[6] ))
 
                 # Save the loss values to file the working directory.
                 testResultSummaryFn = wf.compose_file_name("BatchTest", "dat", subFolder=tt.testResultSubfolder)
