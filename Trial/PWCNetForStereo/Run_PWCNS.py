@@ -210,7 +210,9 @@ if __name__ == "__main__":
 
                 testLossAndMetrics = np.array(testLossList, dtype=np.float32)
                 scaledLossAndMetrics = testLossAndMetrics[:, 1:] * testLossAndMetrics[:, 0].reshape((-1,1))
-                averagedLossAndMetrics = np.mean(scaledLossAndMetrics, axis=0)
+                finiteMask = np.isfinite( scaledLossAndMetrics )
+                finiteMask = np.all( finiteMask, axis=1 )
+                averagedLossAndMetrics = np.mean(scaledLossAndMetrics[finiteMask, :], axis=0)
 
                 wf.logger.info("Average loss = %f." % ( averagedLossAndMetrics[0] ))
                 wf.logger.info("Average 1-pixel error rate = %f." % ( averagedLossAndMetrics[1] ))
