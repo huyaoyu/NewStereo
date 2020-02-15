@@ -514,7 +514,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         else:
             self.frame.logger.info("Could not find \"lossTest\"")
 
-        self.frame.plot_accumulated_values()
+        if ( flagSave ):
+            self.frame.plot_accumulated_values()
 
         return loss.item()
 
