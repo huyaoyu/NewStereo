@@ -6,6 +6,7 @@
 *.dat
 *.npy
 *.pp3
+*.ipynb_checkpoints
 Build/
 build/
 Data/
@@ -21,3 +22,4 @@ CorrelationCUDA/build/
 CorrelationCUDA/dist/
 Trial/SmallSizeStereo/WD/
 Trial/PWCNetForStereo/WD/
+
