@@ -1,6 +1,4 @@
 
-from __future__ import print_function
-
 # Some structures of this file is inspired by 
 # the research work done by Chang and Chen, 
 # Pyramid Stereo Matching Network, CVPR2018.
@@ -11,6 +9,12 @@ from __future__ import print_function
 # The work by Bee Lim, et. al.
 # https://github.com/thstkdgus35/EDSR-PyTorch
 #
+# And 
+# 
+# The work by Sun, et. al.: PWC-Net: CNNs for Optical Flow Using Pyramid, Warping, and Cost Volume
+# The reference non-official source code is at
+# https://github.com/RanhaoKang/PWC-Net_pytorch
+# 
 
 import cv2
 import math
@@ -38,8 +42,9 @@ class ConvExtractor(nn.Module):
 
         moduleList = [ \
             cm.Conv_Half( inCh, outCh, activation=nn.LeakyReLU(0.1) ), \
-            cm.Conv_W( outCh, outCh, activation=nn.LeakyReLU(0.1) ), \
-            cm.Conv_W( outCh, outCh, activation=nn.LeakyReLU(0.1) ) ]
+            # cm.Conv_W( outCh, outCh, activation=nn.LeakyReLU(0.1) ), \
+            # cm.Conv_W( outCh, outCh, activation=nn.LeakyReLU(0.1) ) \
+            ]
         
         if ( lastActivation is not None ):
             moduleList.append( lastActivation )
@@ -189,29 +194,12 @@ class Cost2DisparityAndFeatureRes(nn.Module):
         else:
             return disp, x
 
-class DisparityRefine(nn.Module):
-    def __init__(self, inCh):
-        super(DisparityRefine, self).__init__()
-
-        self.model = nn.Sequential( \
-            nn.Conv2d(inCh, 128, kernel_size=3, stride=1, padding=1,  dilation=1,  bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(128,  128, kernel_size=3, stride=1, padding=2,  dilation=2,  bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(128,  128, kernel_size=3, stride=1, padding=4,  dilation=4,  bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(128,  96,  kernel_size=3, stride=1, padding=8,  dilation=8,  bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(96,   64,  kernel_size=3, stride=1, padding=16, dilation=16, bias=True), nn.LeakyReLU(0.1), \
-            nn.Conv2d(64,   64,  kernel_size=3, stride=1, padding=1,  dilation=1,  bias=True), nn.LeakyReLU(0.1), \
-            PredictDisparity(64) \
-             )
-
-    def forward(self, disp, fe):
-        return self.model(fe) + disp
-
 class EDRegression(nn.Module):
     def __init__(self, inCh):
         super(EDRegression, self).__init__()
 
         self.encoder0_In  = inCh
-        self.encoder0_Out = 128
+        self.encoder0_Out = 32
         self.encoder1_In  = self.encoder0_Out
         self.encoder1_Out = self.encoder1_In * 2
         self.encoder2_In  = self.encoder1_Out
@@ -224,7 +212,7 @@ class EDRegression(nn.Module):
         self.decoder1_In  = self.decoder2_Out + self.encoder1_Out
         self.decoder1_Out = self.decoder3_Out
         self.decoder0_In  = self.decoder1_Out + self.encoder0_Out
-        self.decoder0_Out = 128
+        self.decoder0_Out = 32
 
         # Encoder-decoder.
         self.e0 = cm.Conv_Half( self.encoder0_In, self.encoder0_Out, k=3, activation=cm.SelectedReLU() )
@@ -238,11 +226,12 @@ class EDRegression(nn.Module):
 
         # self.finalUp = cm.Deconv_DoubleSize( self.decoder0_Out, 64, k=4, p=1, activation=cm.SelectedReLU() )
 
-        # Regression.
+        # By-pass.
         self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
         
-        self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
-        self.rg1 = cm.Conv_W( 64, 1, k=3 )
+        # Regression.
+        self.rg0 = cm.Conv_W( self.decoder0_Out, 16, k=3, activation=cm.SelectedReLU() )
+        self.rg1 = cm.Conv_W( 16, 1, k=3 )
 
     def forward(self, x):
         fe0 = self.e0(x)
@@ -317,21 +306,156 @@ class WarpByDisparity(nn.Module):
         
         return output * mask
 
+class HeadFeatureExtractor(nn.Module):
+    def __init__(self, inCh, outCh):
+        super(HeadFeatureExtractor, self).__init__()
+
+        self.firstConv = cm.Conv_W(inCh, outCh, k=3, activation=cm.SelectedReLU())
+
+        self.conv0 = cm.Conv_W(outCh, outCh, k=3, activation=cm.SelectedReLU())
+        self.conv1 = cm.Conv_Half(   outCh,   outCh, k=3, activation=cm.SelectedReLU() )
+        self.conv2 = cm.Conv_Half(   outCh, 2*outCh, k=3, activation=cm.SelectedReLU() )
+
+        self.res   = cm.ResBlock( 2*outCh, k=3, activation=cm.SelectedReLU(), lastActivation=None )
+
+        self.deconv2 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
+        self.deconv1 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
+
+        self.lastConv = cm.Conv_W( 2*outCh, outCh, k=3, activation=cm.SelectedReLU() )
+
+    def forward(self, x):
+        x = self.firstConv(x)
+
+        f0 = self.conv0(x)
+        f1 = self.conv1(f0)
+        f2 = self.conv2(f1)
+
+        r  = self.res(f2)
+
+        d2 = self.deconv2(r)
+
+        d2 = torch.cat((d2, f1), 1)
+        d1 = self.deconv1( d2 )
+
+        d1 = torch.cat((d1, f0), 1)
+
+        f = self.lastConv(d1)
+
+        return f
+
+class RecurrentFeatureExtractor(nn.Module):
+    def __init__(self, inCh, outCh, interCh):
+        super(RecurrentFeatureExtractor, self).__init__()
+
+        self.firstNormalization = FeatureNormalization(inCh)
+
+        self.conv0 = cm.Conv_W(inCh, interCh, k=3, activation=cm.SelectedReLU())
+        self.conv1 = cm.Conv_Half(   interCh,   interCh, k=3, activation=cm.SelectedReLU() )
+        # self.conv2 = cm.Conv_Half( 2*interCh, 4*interCh, k=3, activation=cm.SelectedReLU() )
+
+        self.res   = cm.ResBlock( interCh, k=3, activation=cm.SelectedReLU(), lastActivation=None )
+
+        # self.deconv2 = cm.Deconv_DoubleSize( 4*interCh, 2*interCh, k=4, p=1, activation=cm.SelectedReLU() )
+        self.deconv1 = cm.Deconv_DoubleSize(   interCh,   interCh, k=4, p=1, activation=cm.SelectedReLU() )
+
+        self.lastConv = cm.Conv_W( 2*interCh, outCh, k=3, activation=cm.SelectedReLU() )
+        self.outputNormalization = FeatureNormalization(outCh)
+
+    def forward(self, x):
+        x = self.firstNormalization(x)
+
+        f0 = self.conv0(x)
+        f1 = self.conv1(f0)
+        # f2 = self.conv2(f1)
+
+        # r  = self.res(f2)
+        r  = self.res(f1)
+
+        # d2 = self.deconv2(r)
+        # d2 = torch.cat((d2, f1), 1)
+
+        # d1 = self.deconv1( d2 )
+        d1 = self.deconv1( r )
+
+        d1 = torch.cat((d1, f0), 1)
+
+        f = self.lastConv(d1)
+
+        f = self.outputNormalization(f)
+
+        return f
+
+class RecurrentBlock(nn.Module):
+    def __init__(self, inCh, corrCh, maxDisp, corrKernelSize):
+        super(RecurrentBlock, self).__init__()
+
+        self.fe = RecurrentFeatureExtractor(inCh=inCh, outCh=corrCh, interCh=inCh)
+
+        self.maxDisp    = maxDisp
+        self.padding    = maxDisp
+        self.kernelSize = corrKernelSize
+        self.strideK    = 1
+        self.strideD    = 1
+
+        # Correlation.
+        self.corr2dm = Corr2D.Corr2DM( self.maxDisp, \
+            padding=self.padding, \
+            kernelSize=self.kernelSize, \
+            strideK=self.strideK, \
+            strideD=self.strideD )
+
+        nd = self.maxDisp + 1 + self.maxDisp
+        self.corrActivation = cm.Conv_W(nd, nd, k=1)
+
+        # Warp.
+        self.warp = WarpByDisparity()
+
+        # Disparity residual regression.
+        interChList = [ 128, 96, 64, 32 ]
+        self.disp = Cost2DisparityAndFeatureRes(nd + corrCh, interChList, flagUp=False)
+
+    def forward(self, f0, f1, upsampledScaledDisp):
+        f0 = self.fe(f0)
+        f1 = self.fe(f1)
+
+        f1 = self.warp(f1, upsampledScaledDisp)
+
+        cost = self.corr2dm( f0, f1 )
+        cost = self.corrActivation(cost)
+
+        cost = torch.cat((cost, f0), 1)
+
+        disp, notUsed = self.disp(cost, upsampledScaledDisp)
+
+        return disp, notUsed
+
+class FeatureDownsampler(nn.Module):
+    def __init__(self, inCh, outCh):
+        super(FeatureDownsampler, self).__init__()
+
+        self.model = ConvExtractor(inCh, outCh)
+
+    def forward(self, x):
+        return self.model(x)
+
 class RecurrentStereoParams(object):
     def __init__(self):
         super(RecurrentStereoParams, self).__init__()
 
         self.flagGray = False
 
+        self.headCh = 65
+        self.baseCh = 32
+
         self.amp = 1
 
         self.maxDisp = 4
 
         # Correlation.
-        self.corrPadding    = self.maxDisp
+        # self.corrPadding    = self.maxDisp
         self.corrKernelSize = 1
-        self.corrStrideK    = 1
-        self.corrStrideD    = 1
+        # self.corrStrideK    = 1
+        # self.corrStrideD    = 1
 
     def set_max_disparity(self, md):
         assert md > 0
@@ -345,52 +469,19 @@ class RecurrentStereo(nn.Module):
 
         self.params = params
 
-        # Feature extractors.
-        if ( self.params.flagGray ):
-            self.fe1 = ConvExtractor( 1, 16)
-        else:
-            self.fe1 = ConvExtractor( 3, 16)
+        if ( not self.params.flagGray ):
+            raise Exception("Only support grayscale at the moment.")
 
-        self.fe2 = ConvExtractor( 16,  32)
-        self.fe3 = ConvExtractor( 32,  64)
-        self.fe4 = ConvExtractor( 64,  96)
-        self.fe5 = ConvExtractor( 96, 128)
-        # self.fe6 = ConvExtractor(128, 196)
+        # Feature extractor.
+        self.headFE = HeadFeatureExtractor( self.params.headCh, self.params.baseCh )
+        self.downsampler = FeatureDownsampler( self.params.baseCh, self.params.baseCh )
 
-        # import ipdb; ipdb.set_trace()
+        # Recurrent block.
+        self.rb = RecurrentBlock( self.params.baseCh, self.params.baseCh, \
+            self.params.maxDisp, self.params.corrKernelSize )
 
-        # Correlation.
-        self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
-            padding=self.params.corrPadding, \
-            kernelSize=self.params.corrKernelSize, \
-            strideK=self.params.corrStrideK, \
-            strideD=self.params.corrStrideD )
-
-        self.corrActivation = nn.LeakyReLU(0.1)
-
-        nd = self.params.maxDisp + 1
-
-        # Disparity at various scale.
-        interChList = [ 128, 128, 96, 64, 32 ]
-        chFeat      = np.sum( interChList )
-
-        # self.disp6 = Cost2DisparityAndFeature(nd, 1, interChList)
-        # self.disp5 = Cost2DisparityAndFeature(nd + 128 + 2, 1, interChList)
-        # self.disp4 = Cost2DisparityAndFeature(nd +  96 + 2, 1, interChList)
-        # self.disp3 = Cost2DisparityAndFeature(nd +  64 + 2, 1, interChList)
-        # self.disp2 = Cost2DisparityAndFeature(nd +  32 + 2, 1, interChList)
-        # self.disp1 = Cost2DisparityAndFeature(nd +  16 + 2, 1, interChList, flagUp=False)
-
-        self.disp5 = Cost2DisparityAndFeature(nd, 1, interChList)
-        self.disp4 = Cost2DisparityAndFeature(nd + 96 + 2, 1, interChList)
-        self.disp3 = Cost2DisparityAndFeature(nd + 64 + 2, 1, interChList)
-        self.disp2 = Cost2DisparityAndFeature(nd + 32 + 2, 1, interChList)
-        self.disp1 = Cost2DisparityAndFeature(nd + 16 + 2, 1, interChList, flagUp=False)
-
-        self.refine = DisparityRefine( nd + 16 + 2 + chFeat )
-
-        # Warp.
-        self.warp = WarpByDisparity()
+        # self.refine = DisparityRefineDilated( nd + 32 + chFeat )
+        self.refine = EDRegression( self.params.baseCh + 1 )
 
         # Initialization.
         # for m in self.modules():
@@ -422,395 +513,100 @@ class RecurrentStereo(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-    def forward(self, gray0, gray1, grad0, grad1):
-        B, C, H, W = gray0.size()
+    def forward(self, stack0, stack1, dispSlice=None):
+        B, C, H, W = stack0.size()
         
         # Feature extraction.
-        f10 = self.fe1(gray0)
-        f11 = self.fe1(gray1)
-        
-        f20 = self.fe2(f10)
-        f21 = self.fe2(f11)
+        f00 = self.headFE( stack0 )
+        f01 = self.headFE( stack1 )
 
-        f30 = self.fe3(f20)
-        f31 = self.fe3(f21)
+        f10 = self.downsampler( f00 )
+        f11 = self.downsampler( f01 )
 
-        f40 = self.fe4(f30)
-        f41 = self.fe4(f31)
+        f20 = self.downsampler( f10 )
+        f21 = self.downsampler( f11 )
 
-        f50 = self.fe5(f40)
-        f51 = self.fe5(f41)
+        f30 = self.downsampler( f20 )
+        f31 = self.downsampler( f21 )
+
+        f40 = self.downsampler( f30 )
+        f41 = self.downsampler( f31 )
 
         # import ipdb; ipdb.set_trace()
 
-        # f60 = self.fe6(f50)
-        # f61 = self.fe6(f51)
-
-        # # ========== Scale 6. ========== 
-        # # Correlation.
-        # cost6 = self.corr2dm( f60, f61 )
-        # cost6 = self.corrActivation( cost6 )
-
-        # # Disparity.
-        # disp6, upDisp6, upFeat6 = self.disp6(cost6)
-
-        # ========== Scale 5. ==========
-        # scale = 5
-
-        # # Warp.
-        # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
-        warp5 = f51
-
-        # Correlation.
-        cost5 = self.corr2dm( f50, warp5 )
-        cost5 = self.corrActivation( cost5 )
-
-        # # Concatenate.
-        # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
-
-        # Disparity.
-        disp5, upDisp5, upFeat5 = self.disp5(cost5)
-
-        # ========== Scale 4. ==========
+        # ========== Scale 4. ========== 
         scale = 4
 
-        # Warp.
-        # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
-        warp4 = self.warp( f41, upDisp5 * ( 0.5**scale / self.params.amp ) )
+        H4 = f40.size()[2]
+        W4 = f40.size()[3]
 
-        # Correlation.
-        cost4 = self.corr2dm( f40, warp4 )
-        cost4 = self.corrActivation( cost4 )
+        # Temporary disparity.
+        dispT = torch.zeros((B, 1, H4, W4), dtype=torch.float32).cuda()
+        dispT.requires_grad = False
 
-        # Concatenate.
-        cost4 = torch.cat( (cost4, f40, upDisp5, upFeat5), 1 )
-
-        # Disparity.
-        disp4, upDisp4, upFeat4 = self.disp4(cost4)
+        disp4, _ = self.rb( f40, f41, dispT )
 
         # ========== Scale 3. ==========
         scale = 3
 
-        # Warp.
-        # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
-        warp3 = self.warp( f31, upDisp4 * ( 0.5**scale / self.params.amp ) )
+        H3 = f30.size()[2]
+        W3 = f30.size()[3]
 
-        # Correlation.
-        cost3 = self.corr2dm( f30, warp3 )
-        cost3 = self.corrActivation( cost3 )
+        disp4Up = F.interpolate( disp4, (H3, W3), mode="bilinear", align_corners=False ) * 2
 
-        # Concatenate.
-        cost3 = torch.cat( (cost3, f30, upDisp4, upFeat4), 1 )
-
-        # Disparity.
-        disp3, upDisp3, upFeat3 = self.disp3(cost3)
+        disp3, _ = self.rb( f30, f31, disp4Up )
 
         # ========== Scale 2. ==========
         scale = 2
 
-        # Warp.
-        # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
-        warp2 = self.warp( f21, upDisp3 * ( 0.5**scale / self.params.amp ) )
+        H2 = f20.size()[2]
+        W2 = f20.size()[3]
 
-        # Correlation.
-        cost2 = self.corr2dm( f20, warp2 )
-        cost2 = self.corrActivation( cost2 )
+        disp3Up = F.interpolate( disp3, (H2, W2), mode="bilinear", align_corners=False ) * 2
 
-        # Concatenate.
-        cost2 = torch.cat( (cost2, f20, upDisp3, upFeat3), 1 )
-
-        # Disparity.
-        disp2, upDisp2, upFeat2 = self.disp2(cost2)
+        disp2, _ = self.rb( f20, f21, disp3Up )
 
         # ========== Scale 1. ==========
         scale = 1
 
-        # Warp.
-        # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
-        warp1 = self.warp( f11, upDisp2 * ( 0.5**scale / self.params.amp ) )
+        H1 = f10.size()[2]
+        W1 = f10.size()[3]
 
-        # Correlation.
-        cost1 = self.corr2dm( f10, warp1 )
-        cost1 = self.corrActivation( cost1 )
+        disp2Up = F.interpolate( disp2, (H1, W1), mode="bilinear", align_corners=False ) * 2
 
-        # Concatenate.
-        cost1 = torch.cat( (cost1, f10, upDisp2, upFeat2), 1 )
+        disp1, _ = self.rb( f10, f11, disp2Up )
 
-        # Disparity.
-        disp1, feat1 = self.disp1(cost1)
+        # ========== Scale 0. ==========
+        scale = 0
 
-        # ========== Disparity refinement. ==========
-        disp1 = self.refine( disp1, feat1 )
+        H0 = f00.size()[2]
+        W0 = f00.size()[3]
 
-        # # Final up-sample.
-        # disp0 = F.interpolate( disp1, ( B, 1, H, W ), mode="trilinear", align_corners=False )
+        disp1Up = F.interpolate( disp1, (H0, W0), mode="bilinear", align_corners=False ) * 2
 
-        if ( self.training ):
-            return disp1, disp2, disp3, disp4, disp5 #, disp6
-        else:
-            return disp1, disp2, disp3, disp4, disp5
-
-class RecurrentStereoRes(nn.Module):
-    def __init__(self, params):
-        super(RecurrentStereoRes, self).__init__()
-
-        self.params = params
-
-        # Feature extractors.
-        if ( self.params.flagGray ):
-            self.fe1 = ConvExtractor( 1, 32)
-            self.re1 = nn.Sequential( \
-                ConvExtractor( 1, 32), \
-                cm.Deconv_DoubleSize( 32, 32, k=4, p=1, activation=cm.SelectedReLU() ) )
-        else:
-            self.fe1 = ConvExtractor( 3, 32)
-            self.re1 = nn.Sequential( \
-                ConvExtractor( 3, 32), \
-                cm.Deconv_DoubleSize( 32, 32, k=4, p=1, activation=cm.SelectedReLU() ) )
-        
-        self.fe2 = ConvExtractor( 32,  32)
-        self.fe3 = ConvExtractor( 32,  64)
-        self.fe4 = ConvExtractor( 64,  128)
-        self.fe5 = ConvExtractor( 128, 256)
-        # self.fe6 = ConvExtractor(128, 196)
-
-        # import ipdb; ipdb.set_trace()
-
-        # Batch normalization layers.
-        self.fn1 = FeatureNormalization(32)
-        self.fn2 = FeatureNormalization(32)
-        self.fn3 = FeatureNormalization(64)
-        self.fn4 = FeatureNormalization(128)
-        self.fn5 = FeatureNormalization(256)
-
-        # Correlation.
-        self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
-            padding=self.params.corrPadding, \
-            kernelSize=self.params.corrKernelSize, \
-            strideK=self.params.corrStrideK, \
-            strideD=self.params.corrStrideD )
-
-        nd = self.params.maxDisp + 1 + self.params.maxDisp
-
-        self.corrActivation = cm.Conv_W(nd, nd, k=1)
-
-        # Disparity at various scale.
-        interChList = [ 128, 128, 96, 64, 32 ]
-        chFeat      = np.sum( interChList )
-
-        self.disp5 = Cost2DisparityAndFeature(nd, 1, interChList)
-        self.disp4 = Cost2DisparityAndFeatureRes(nd + 128, interChList)
-        self.disp3 = Cost2DisparityAndFeatureRes(nd + 64, interChList)
-        self.disp2 = Cost2DisparityAndFeatureRes(nd + 32, interChList)
-        self.disp1 = Cost2DisparityAndFeatureRes(nd + 32, interChList, flagUp=False)
-
-        # self.refine = DisparityRefine( nd + 32 + chFeat )
-        self.refine = EDRegression( 32 + 1 )
-
-        # Warp.
-        self.warp = WarpByDisparity()
-
-        # Initialization.
-        # for m in self.modules():
-        #     # print(m)
-        #     if ( isinstance( m, (nn.Conv2d) ) ):
-        #         n = m.kernel_size[0] * m.kernel_size[1]
-        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n )
-        #         m.weight.data.normal_(1/n, math.sqrt( 2.0 / n ))
-        #         m.weight.data = m.weight.data / m.in_channels
-        #     elif ( isinstance( m, (nn.Conv3d) ) ):
-        #         n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
-        #         # m.weight.data.normal_(0, math.sqrt( 2.0 / n ))
-        #         m.weight.data.uniform_(0, math.sqrt( 2.0 / n ))
-        #     elif ( isinstance( m, (nn.BatchNorm2d) ) ):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
-        #     elif ( isinstance( m, (nn.BatchNorm3d) ) ):
-        #         m.weight.data.fill_(1)
-        #         m.bias.data.zero_()
-        #     elif ( isinstance( m, (nn.Linear) ) ):
-        #         m.weight.data.uniform_(0, 1)
-        #         m.bias.data.zero_()
-        #     # else:
-        #     #     raise Exception("Unexpected module type {}.".format(type(m)))
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
-    def forward(self, gray0, gray1, grad0, grad1):
-        B, C, H, W = gray0.size()
-        
-        # Feature extraction.
-        f10 = self.fe1(gray0)
-        f11 = self.fe1(gray1)
-        
-        f20 = self.fe2(f10)
-        f21 = self.fe2(f11)
-
-        f30 = self.fe3(f20)
-        f31 = self.fe3(f21)
-
-        f40 = self.fe4(f30)
-        f41 = self.fe4(f31)
-
-        f50 = self.fe5(f40)
-        f51 = self.fe5(f41)
-
-        # import ipdb; ipdb.set_trace()
-
-        # f60 = self.fe6(f50)
-        # f61 = self.fe6(f51)
-
-        # # ========== Scale 6. ========== 
-        # # Correlation.
-        # cost6 = self.corr2dm( f60, f61 )
-        # cost6 = self.corrActivation( cost6 )
-
-        # # Disparity.
-        # disp6, upDisp6, upFeat6 = self.disp6(cost6)
-
-        # ========== Scale 5. ==========
-        # scale = 5
-
-        # # Warp.
-        # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
-        warp5 = f51
-
-        # Normalization
-        f50   = self.fn5(f50)
-        warp5 = self.fn5(warp5)
-
-        # Correlation.
-        cost5 = self.corr2dm( f50, warp5 )
-        cost5 = self.corrActivation( cost5 )
-
-        # # Concatenate.
-        # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
-
-        # Disparity.
-        disp5, upDisp5, upFeat5 = self.disp5(cost5)
-
-        # ========== Scale 4. ==========
-        scale = 4
-
-        # Warp.
-        # warp4 = self.warp( f41, upDisp5 * self.params.amp * 0.5**scale )
-        upDisp5 = upDisp5 * ( 2 )
-        warp4 = self.warp( f41, upDisp5 / self.params.amp )
-
-        # Normalization
-        f40   = self.fn4(f40)
-        warp4 = self.fn4(warp4)
-
-        # Correlation.
-        cost4 = self.corr2dm( f40, warp4 )
-        cost4 = self.corrActivation( cost4 )
-
-        # Concatenate.
-        cost4 = torch.cat( (cost4, f40), 1 )
-
-        # Disparity.
-        disp4, upDisp4 = self.disp4(cost4, upDisp5)
-
-        # ========== Scale 3. ==========
-        scale = 3
-
-        # Warp.
-        # warp3 = self.warp( f31, upDisp4 * self.params.amp * 0.5**scale )
-        upDisp4 = upDisp4 * ( 2 )
-        warp3 = self.warp( f31, upDisp4 / self.params.amp )
-
-        # Normalization
-        f30   = self.fn3(f30)
-        warp3 = self.fn3(warp3)
-
-        # Correlation.
-        cost3 = self.corr2dm( f30, warp3 )
-        cost3 = self.corrActivation( cost3 )
-
-        # Concatenate.
-        cost3 = torch.cat( (cost3, f30), 1 )
-
-        # Disparity.
-        disp3, upDisp3 = self.disp3(cost3, upDisp4)
-
-        # ========== Scale 2. ==========
-        scale = 2
-
-        # Warp.
-        # warp2 = self.warp( f21, upDisp3 * self.params.amp * 0.5**scale )
-        upDisp3 = upDisp3 * ( 2 )
-        warp2 = self.warp( f21, upDisp3 / self.params.amp )
-
-        # Normalization
-        f20   = self.fn2(f20)
-        warp2 = self.fn2(warp2)
-
-        # Correlation.
-        cost2 = self.corr2dm( f20, warp2 )
-        cost2 = self.corrActivation( cost2 )
-
-        # Concatenate.
-        cost2 = torch.cat( (cost2, f20), 1 )
-
-        # Disparity.
-        disp2, upDisp2 = self.disp2(cost2, upDisp3)
-
-        # ========== Scale 1. ==========
-        scale = 1
-
-        # Warp.
-        # warp1 = self.warp( f11, upDisp2 * self.params.amp * 0.5**scale )
-        upDisp2 = upDisp2 * ( 2 )
-        warp1 = self.warp( f11, upDisp2 / self.params.amp )
-
-        # Normalization
-        f10   = self.fn1(f10)
-        warp1 = self.fn1(warp1)
-
-        # Correlation.
-        cost1 = self.corr2dm( f10, warp1 )
-        cost1 = self.corrActivation( cost1 )
-
-        # Concatenate.
-        cost1 = torch.cat( (cost1, f10), 1 )
-
-        # Disparity.
-        disp1, feat1 = self.disp1(cost1, upDisp2)
-
-        # Final up-sample.
-        disp0 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
+        disp0, _ = self.rb( f00, f01, disp1Up )
 
         # ========== Disparity refinement. ==========
-        # disp1 = self.refine( disp1, feat1 )
-        r10 = self.re1(gray0)
 
-        dispRe0 = self.refine( torch.cat((r10, disp0), 1) )
+        dispRe0 = self.refine( torch.cat((f00, disp0), 1) )
         disp0 = disp0 + dispRe0
 
         if ( self.training ):
-            return disp0, disp1, disp2, disp3, disp4, disp5 #, disp6
+            return disp0, disp1, disp2, disp3, disp4
         else:
-            return disp0, disp1, disp2, disp3, disp4, disp5
-
-        # if ( self.training ):
-        #     return disp5, disp4
-        # else:
-        #     return disp5, disp4
+            return disp0, disp1, disp2, disp3, disp4
 
 if __name__ == "__main__":
     print("Test RecurrentStereo.py")
 
     params = RecurrentStereoParams()
+    params.flagGray = True
 
-    pwcns = RecurrentStereo(params)
+    rs = RecurrentStereo(params)
 
-    print("pwcns has %d model parameters. " % ( \
-        sum( [ p.data.nelement() for p in pwcns.parameters() ] ) ))
+    print("RS has %d model parameters. " % ( \
+        sum( [ p.data.nelement() for p in rs.parameters() ] ) ))
 
-    modelDict = pwcns.state_dict()
+    modelDict = rs.state_dict()
     for item in modelDict:
         print("Layer {}. ".format(item))

@@ -50,20 +50,20 @@ class MyWF(TorchFlow.TorchFlow):
         self.post_initialize()
 
     # Overload the function train().
-    def train(self, imgL, imgR, dispL, gradL, gradR, epochCount):
+    def train(self, imgL, imgR, dispL, epochCount):
         super(MyWF, self).train()
 
         self.check_tt()
 
-        return self.tt.train(imgL, imgR, dispL, gradL, gradR, epochCount)
+        return self.tt.train(imgL, imgR, dispL, epochCount)
         
     # Overload the function test().
-    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount, flagSave=True):
+    def test(self, imgL, imgR, dispL, epochCount, flagSave=True):
         super(MyWF, self).test()
 
         self.check_tt()
 
-        return self.tt.test(imgL, imgR, dispL, gradL, gradR, epochCount, flagSave)
+        return self.tt.test(imgL, imgR, dispL, epochCount, flagSave)
 
     def infer(self, imgL, imgR, gradL, Q):
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         wf.verbose = False
 
         # Cross reference.
-        tt = TrainTestPWCNetStereo(wf.workingDir, wf)
+        tt = TrainTestRecurrentStereo(wf.workingDir, wf)
         wf.set_tt(tt)
 
         if ( True == args.multi_gpus ):
@@ -165,12 +165,12 @@ if __name__ == "__main__":
                 print_delimeter(title = "Training loops.")
 
                 testImgL, testImgR, testDispL, testGradL, testGradR = next( iterTestData )
-                wf.test( testImgL, testImgR, testDispL, testGradL, testGradR, 0 )
+                wf.test( testImgL, testImgR, testDispL, 0 )
 
                 for i in range(args.train_epochs):
                     for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTrainLoader ):
                         
-                        wf.train( imgL, imgR, dispL, gradL, gradR, i )
+                        wf.train( imgL, imgR, dispL, i )
 
                         if ( True == tt.flagInspect ):
                             wf.logger.warning("Inspection enabled.")
@@ -186,7 +186,7 @@ if __name__ == "__main__":
                                     testImgL, testImgR, testDispL, testGradL, testGradR = next( iterTestData )
 
                                 # Perform test.
-                                wf.test( testImgL, testImgR, testDispL, testGradL, testGradR, i )
+                                wf.test( testImgL, testImgR, testDispL, i )
             else:
                 wf.logger.info("Begin testing.")
                 print_delimeter(title="Testing loops.")
@@ -194,7 +194,7 @@ if __name__ == "__main__":
                 testLossList = []
 
                 for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTestLoader ):
-                    loss, metrics = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
+                    loss, metrics = wf.test( imgL, imgR, dispL, batchIdx, args.test_flag_save )
 
                     if ( True == tt.flagInspect ):
                         wf.logger.warning("Inspection enabled.")

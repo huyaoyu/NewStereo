@@ -13,7 +13,8 @@ import torch.optim as optim
 from workflow import WorkFlow, TorchFlow
 
 from TTBase import TrainTestBase
-from Model.RecurrentStereo import RecurrentStereo, RecurrentStereoRes, RecurrentStereoParams
+from Model.RecurrentStereo import RecurrentStereo, RecurrentStereoParams
+from Model.ImageStack import stack_single_channel_tensor
 
 from Metric.MetricKITTI import apply_metrics as metrics_KITTI
 
@@ -112,7 +113,7 @@ class TrainTestRecurrentStereo(TrainTestBase):
             self.params.flagGray = True
         
         # self.model = RecurrentStereo(self.params)
-        self.model = RecurrentStereoRes(self.params)
+        self.model = RecurrentStereo(self.params)
 
         # Check if we have to read the model from filesystem.
         if ( "" != self.readModelString ):
@@ -154,7 +155,7 @@ class TrainTestRecurrentStereo(TrainTestBase):
             self.frame.logger.info("Optimizer state loaded for file %s. " % (optFn))
 
     # Overload parent's function.
-    def train(self, imgL, imgR, dispL, gradL, gradR, epochCount):
+    def train(self, imgL, imgR, dispL, epochCount):
         self.check_frame()
 
         if ( True == self.flagInfer ):
@@ -167,9 +168,9 @@ class TrainTestRecurrentStereo(TrainTestBase):
             imgR  = imgR.cuda()
             dispL = dispL.cuda()
 
-            if ( self.flagSobelX ):
-                gradL = gradL.cuda()
-                gradR = gradR.cuda()
+        # Create stacks.
+        stack0 = stack_single_channel_tensor(imgL, shift=8, radius=32)
+        stack1 = stack_single_channel_tensor(imgR, shift=8, radius=32)
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -178,45 +179,27 @@ class TrainTestRecurrentStereo(TrainTestBase):
         dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
         dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
         dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
-
-        # dispL2 = torch.floor(dispL2)
-        # dispL3 = torch.floor(dispL3)
-        # dispL4 = torch.floor(dispL4)
-        # dispL5 = torch.floor(dispL5)
 
         self.optimizer.zero_grad()
 
         # Forward.
-        disp0, disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-
-        # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
+        disp0, disp1, disp2, disp3, disp4 = self.model(stack0, stack1)
 
         # import ipdb; ipdb.set_trace()
 
         loss = \
-              32 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
             + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
             +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
             +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
             +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
             +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
-        # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
-
-        # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
-
-        # loss = \
-        #     2*F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-        #     + F.smooth_l1_loss( disp4, dispL4, reduction="mean" )
-        # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
-
         loss.backward()
 
         self.optimizer.step()
 
         self.frame.AV["loss"].push_back( loss.item() )
-        self.frame.AV["TrueDispAvg"].push_back( dispL.mean() )
+        self.frame.AV["TrueDispAvg"].push_back( dispL.mean().item() )
 
         self.countTrain += 1
 
@@ -430,7 +413,7 @@ class TrainTestRecurrentStereo(TrainTestBase):
             np.savetxt( fn, disp, fmt="%+.6f" )
 
     # Overload parent's function.
-    def test(self, imgL, imgR, dispL, gradL, gradR, epochCount, flagSave=True):
+    def test(self, imgL, imgR, dispL, epochCount, flagSave=True):
         self.check_frame()
 
         if ( True == self.flagInfer ):
@@ -443,9 +426,11 @@ class TrainTestRecurrentStereo(TrainTestBase):
             imgR  = imgR.cuda()
             dispL = dispL.cuda()
 
-            if ( self.flagSobelX ):
-                gradL = gradL.cuda()
-                gradR = gradR.cuda()
+        # Create stacks.
+        stack0 = stack_single_channel_tensor(imgL, shift=8, radius=32)
+        stack1 = stack_single_channel_tensor(imgR, shift=8, radius=32)
+
+        # print("stack0.size() = \n{}".format( stack0.size() ))
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -454,50 +439,31 @@ class TrainTestRecurrentStereo(TrainTestBase):
         dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
         dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
         dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
-        dispL5 = F.interpolate( dispL * self.params.amp, (H // 32, W // 32), mode="bilinear", align_corners=False ) * 0.5**5
-
-        # dispL2 = torch.floor(dispL2)
-        # dispL3 = torch.floor(dispL3)
-        # dispL4 = torch.floor(dispL4)
-        # dispL5 = torch.floor(dispL5)
 
         with torch.no_grad():
             # Forward.
-            disp0, disp1, disp2, disp3, disp4, disp5 = self.model(imgL, imgR, gradL, gradR)
-
-            # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
+            disp0, disp1, disp2, disp3, disp4 = self.model(stack0, stack1)
             
             loss = \
-                  32 * F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
                 + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
                 +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
                 +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
                 +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
                 +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
-            # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
-
-            # loss = F.mse_loss( disp1, dispL1, reduction="sum" )
-
-            # loss = \
-            #     2*F.smooth_l1_loss( disp5, dispL5, reduction="mean" ) \
-            #     + F.smooth_l1_loss( disp4, dispL4, reduction="mean" )
-            # loss = F.mse_loss( disp5, dispL5, reduction="mean" )
-
             # Find all the limits of the ground truth.
-            limits = np.zeros((5,2), dtype=np.float32)
+            limits = np.zeros((4,2), dtype=np.float32)
             limits[0, 0] = dispL1.min(); limits[0, 1] = dispL1.max()
             limits[1, 0] = dispL2.min(); limits[1, 1] = dispL2.max()
             limits[2, 0] = dispL3.min(); limits[2, 1] = dispL3.max()
             limits[3, 0] = dispL4.min(); limits[3, 1] = dispL4.max()
-            limits[4, 0] = dispL5.min(); limits[4, 1] = dispL5.max()
 
-            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4, dispL5 ], limits )
-            predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4, disp5  ], limits )
+            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4 ], limits )
+            predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4 ], limits )
 
             # Apply metrics.
             dispLNP = dispL.squeeze(1).cpu().numpy()
-            mask    = dispLNP <= 128
+            mask    = dispLNP <= 192
             mask    = mask.astype(np.int)
             metrics = metrics_KITTI( dispLNP, disp0.squeeze(1).cpu().numpy(), mask )
 
@@ -550,6 +516,6 @@ class TrainTestRecurrentStereo(TrainTestBase):
 
         # Save the model and optimizer.
         if ( False == self.flagTest and False == self.flagInfer ):
-            self.frame.save_model( self.model, "PWCNS" )
-            self.frame.save_optimizer( self.optimizer, "PWCNS_Opt" )
+            self.frame.save_model( self.model, "RS" )
+            self.frame.save_optimizer( self.optimizer, "RS_Opt" )
         # self.frame.logger.warning("Model not saved for dummy test.")
