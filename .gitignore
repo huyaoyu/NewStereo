@@ -22,4 +22,5 @@ CorrelationCUDA/build/
 CorrelationCUDA/dist/
 Trial/SmallSizeStereo/WD/
 Trial/PWCNetForStereo/WD/
+Trial/RecurrentStereo/WD/
 
