@@ -25,7 +25,7 @@ import torch.nn.functional as F
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PWCNetStereo/Model")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/RecurrentStereo/Model")
     import CommonModel as cm
 else:
     from . import CommonModel as cm
@@ -317,9 +317,9 @@ class WarpByDisparity(nn.Module):
         
         return output * mask
 
-class PWCNetStereoParams(object):
+class RecurrentStereoParams(object):
     def __init__(self):
-        super(PWCNetStereoParams, self).__init__()
+        super(RecurrentStereoParams, self).__init__()
 
         self.flagGray = False
 
@@ -339,9 +339,9 @@ class PWCNetStereoParams(object):
         self.maxDisp = int( md )
         self.corrPadding = self.maxDisp
 
-class PWCNetStereo(nn.Module):
+class RecurrentStereo(nn.Module):
     def __init__(self, params):
-        super(PWCNetStereo, self).__init__()
+        super(RecurrentStereo, self).__init__()
 
         self.params = params
 
@@ -550,9 +550,9 @@ class PWCNetStereo(nn.Module):
         else:
             return disp1, disp2, disp3, disp4, disp5
 
-class PWCNetStereoRes(nn.Module):
+class RecurrentStereoRes(nn.Module):
     def __init__(self, params):
-        super(PWCNetStereoRes, self).__init__()
+        super(RecurrentStereoRes, self).__init__()
 
         self.params = params
 
@@ -802,11 +802,11 @@ class PWCNetStereoRes(nn.Module):
         #     return disp5, disp4
 
 if __name__ == "__main__":
-    print("Test PWCNetStereo.py")
+    print("Test RecurrentStereo.py")
 
-    params = PWCNetStereoParams()
+    params = RecurrentStereoParams()
 
-    pwcns = PWCNetStereo(params)
+    pwcns = RecurrentStereo(params)
 
     print("pwcns has %d model parameters. " % ( \
         sum( [ p.data.nelement() for p in pwcns.parameters() ] ) ))
