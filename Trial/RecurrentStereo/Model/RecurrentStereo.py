@@ -99,18 +99,22 @@ class CostRegulator(nn.Module):
         return x
 
 class PredictDisparity(nn.Module):
-    def __init__(self, inCh):
+    def __init__(self, inCh, interCh, maxDisp):
         super(PredictDisparity, self).__init__()
 
         self.model = nn.Sequential( \
-            cm.Conv_W(inCh, 64, activation=nn.LeakyReLU(0.1)), \
-            cm.Conv_W(64, 1) )
+            cm.Conv_W(inCh, interCh, activation=nn.LeakyReLU(0.1)), \
+            nn.BatchNorm2d(interCh, track_running_stats=False), \
+            cm.Conv_W(interCh, 1), \
+            nn.Tanh() )
+
+        self.maxDisp = maxDisp
         
         # self.model = \
         #     cm.Conv_W(inCh, 1, activation=nn.LeakyReLU(0.1))
 
     def forward(self, x):
-        return self.model(x)
+        return self.model(x) * self.maxDisp
 
 class UpDisparity(nn.Module):
     def __init__(self):
@@ -164,7 +168,7 @@ class Cost2DisparityAndFeature(nn.Module):
             return disp, x
 
 class Cost2DisparityAndFeatureRes(nn.Module):
-    def __init__(self, inCh, interChList, flagUp=True):
+    def __init__(self, inCh, interChList, maxDisp, flagUp=True):
         super(Cost2DisparityAndFeatureRes, self).__init__()
 
         # The regulator.
@@ -173,7 +177,7 @@ class Cost2DisparityAndFeatureRes(nn.Module):
         cumCh = np.cumsum( interChList )
 
         # The disparity predictor.
-        self.disp = PredictDisparity( inCh + cumCh[-1] )
+        self.disp = PredictDisparity( inCh + cumCh[-1], inCh, maxDisp )
 
         # The up-sample model.
         if ( flagUp ):
@@ -312,36 +316,36 @@ class HeadFeatureExtractor(nn.Module):
 
         self.firstConv = cm.Conv_W(inCh, outCh, k=3, activation=cm.SelectedReLU())
 
-        self.conv0 = cm.Conv_W(outCh, outCh, k=3, activation=cm.SelectedReLU())
-        self.conv1 = cm.Conv_Half(   outCh,   outCh, k=3, activation=cm.SelectedReLU() )
-        self.conv2 = cm.Conv_Half(   outCh, 2*outCh, k=3, activation=cm.SelectedReLU() )
+        # self.conv0 = cm.Conv_W(outCh, outCh, k=3, activation=cm.SelectedReLU())
+        # self.conv1 = cm.Conv_Half(   outCh,   outCh, k=3, activation=cm.SelectedReLU() )
+        # self.conv2 = cm.Conv_Half(   outCh, 2*outCh, k=3, activation=cm.SelectedReLU() )
 
-        self.res   = cm.ResBlock( 2*outCh, k=3, activation=cm.SelectedReLU(), lastActivation=None )
+        self.res   = cm.ResBlock( outCh, k=3, activation=cm.SelectedReLU(), lastActivation=cm.SelectedReLU() )
 
-        self.deconv2 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
-        self.deconv1 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
+        # self.deconv2 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
+        # self.deconv1 = cm.Deconv_DoubleSize( 2*outCh,   outCh, k=4, p=1, activation=cm.SelectedReLU() )
 
-        self.lastConv = cm.Conv_W( 2*outCh, outCh, k=3, activation=cm.SelectedReLU() )
+        # self.lastConv = cm.Conv_W( 2*outCh, outCh, k=3, activation=cm.SelectedReLU() )
 
     def forward(self, x):
         x = self.firstConv(x)
 
-        f0 = self.conv0(x)
-        f1 = self.conv1(f0)
-        f2 = self.conv2(f1)
+        # f0 = self.conv0(x)
+        # f1 = self.conv1(f0)
+        # f2 = self.conv2(f1)
 
-        r  = self.res(f2)
+        r  = self.res(x)
 
-        d2 = self.deconv2(r)
+        # d2 = self.deconv2(r)
 
-        d2 = torch.cat((d2, f1), 1)
-        d1 = self.deconv1( d2 )
+        # d2 = torch.cat((d2, f1), 1)
+        # d1 = self.deconv1( d2 )
 
-        d1 = torch.cat((d1, f0), 1)
+        # d1 = torch.cat((d1, f0), 1)
 
-        f = self.lastConv(d1)
+        # f = self.lastConv(d1)
 
-        return f
+        return r
 
 class RecurrentFeatureExtractor(nn.Module):
     def __init__(self, inCh, outCh, interCh):
@@ -349,39 +353,40 @@ class RecurrentFeatureExtractor(nn.Module):
 
         self.firstNormalization = FeatureNormalization(inCh)
 
-        self.conv0 = cm.Conv_W(inCh, interCh, k=3, activation=cm.SelectedReLU())
-        self.conv1 = cm.Conv_Half(   interCh,   interCh, k=3, activation=cm.SelectedReLU() )
+        self.conv0 = cm.Conv_W(inCh, outCh, k=3, activation=cm.SelectedReLU())
+        # self.conv1 = cm.Conv_Half(   interCh,   interCh, k=3, activation=cm.SelectedReLU() )
         # self.conv2 = cm.Conv_Half( 2*interCh, 4*interCh, k=3, activation=cm.SelectedReLU() )
 
-        self.res   = cm.ResBlock( interCh, k=3, activation=cm.SelectedReLU(), lastActivation=None )
+        self.res   = cm.ResBlock( outCh, k=3, activation=cm.SelectedReLU(), lastActivation=cm.SelectedReLU() )
 
         # self.deconv2 = cm.Deconv_DoubleSize( 4*interCh, 2*interCh, k=4, p=1, activation=cm.SelectedReLU() )
-        self.deconv1 = cm.Deconv_DoubleSize(   interCh,   interCh, k=4, p=1, activation=cm.SelectedReLU() )
+        # self.deconv1 = cm.Deconv_DoubleSize(   interCh,   interCh, k=4, p=1, activation=cm.SelectedReLU() )
 
-        self.lastConv = cm.Conv_W( 2*interCh, outCh, k=3, activation=cm.SelectedReLU() )
+        # self.lastConv = cm.Conv_W( 2*interCh, outCh, k=3, activation=cm.SelectedReLU() )
         self.outputNormalization = FeatureNormalization(outCh)
 
     def forward(self, x):
         x = self.firstNormalization(x)
 
         f0 = self.conv0(x)
-        f1 = self.conv1(f0)
+        # f1 = self.conv1(f0)
         # f2 = self.conv2(f1)
 
         # r  = self.res(f2)
-        r  = self.res(f1)
+        r  = self.res(f0)
 
         # d2 = self.deconv2(r)
         # d2 = torch.cat((d2, f1), 1)
 
         # d1 = self.deconv1( d2 )
-        d1 = self.deconv1( r )
+        # d1 = self.deconv1( r )
 
-        d1 = torch.cat((d1, f0), 1)
+        # d1 = torch.cat((d1, f0), 1)
 
-        f = self.lastConv(d1)
+        # f = self.lastConv(d1)
 
-        f = self.outputNormalization(f)
+        # f = self.outputNormalization(f)
+        f = self.outputNormalization(r)
 
         return f
 
@@ -412,7 +417,7 @@ class RecurrentBlock(nn.Module):
 
         # Disparity residual regression.
         interChList = [ 128, 96, 64, 32 ]
-        self.disp = Cost2DisparityAndFeatureRes(nd + corrCh, interChList, flagUp=False)
+        self.disp = Cost2DisparityAndFeatureRes(nd + corrCh, interChList, self.maxDisp, flagUp=False)
 
     def forward(self, f0, f1, upsampledScaledDisp):
         f0 = self.fe(f0)
@@ -438,6 +443,17 @@ class FeatureDownsampler(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+class DisparityUpsampler(nn.Module):
+    def __init__(self, interCh):
+        super(DisparityUpsampler, self).__init__()
+
+        self.model = nn.Sequential( \
+            cm.Deconv_DoubleSize(1, interCh, k=4, p=1, activation=None), \
+            cm.Conv_W(interCh, 1, k=3, activation=None))
+    
+    def forward(self, x):
+        return self.model(x)
+
 class RecurrentStereoParams(object):
     def __init__(self):
         super(RecurrentStereoParams, self).__init__()
@@ -449,7 +465,7 @@ class RecurrentStereoParams(object):
 
         self.amp = 1
 
-        self.maxDisp = 4
+        self.maxDisp = 16
 
         # Correlation.
         # self.corrPadding    = self.maxDisp
@@ -474,10 +490,19 @@ class RecurrentStereo(nn.Module):
 
         # Feature extractor.
         self.headFE = HeadFeatureExtractor( self.params.headCh, self.params.baseCh )
-        self.downsampler = FeatureDownsampler( self.params.baseCh, self.params.baseCh )
+        self.downsampler0 = FeatureDownsampler(   self.params.baseCh,   self.params.baseCh )
+        self.downsampler2 = FeatureDownsampler(   self.params.baseCh, 2*self.params.baseCh )
+        self.downsampler3 = FeatureDownsampler( 2*self.params.baseCh, 2*self.params.baseCh )
+
+        self.upsampler1 = DisparityUpsampler(4)
+        self.upsampler2 = DisparityUpsampler(4)
+        self.upsampler3 = DisparityUpsampler(4)
 
         # Recurrent block.
-        self.rb = RecurrentBlock( self.params.baseCh, self.params.baseCh, \
+        self.rb0 = RecurrentBlock( self.params.baseCh, self.params.baseCh, \
+            self.params.maxDisp, self.params.corrKernelSize )
+
+        self.rb2 = RecurrentBlock( 2*self.params.baseCh, 2*self.params.baseCh, \
             self.params.maxDisp, self.params.corrKernelSize )
 
         # self.refine = DisparityRefineDilated( nd + 32 + chFeat )
@@ -520,31 +545,31 @@ class RecurrentStereo(nn.Module):
         f00 = self.headFE( stack0 )
         f01 = self.headFE( stack1 )
 
-        f10 = self.downsampler( f00 )
-        f11 = self.downsampler( f01 )
+        f10 = self.downsampler0( f00 )
+        f11 = self.downsampler0( f01 )
 
-        f20 = self.downsampler( f10 )
-        f21 = self.downsampler( f11 )
+        f20 = self.downsampler2( f10 )
+        f21 = self.downsampler2( f11 )
 
-        f30 = self.downsampler( f20 )
-        f31 = self.downsampler( f21 )
+        f30 = self.downsampler3( f20 )
+        f31 = self.downsampler3( f21 )
 
-        f40 = self.downsampler( f30 )
-        f41 = self.downsampler( f31 )
+        # f40 = self.downsampler( f30 )
+        # f41 = self.downsampler( f31 )
 
         # import ipdb; ipdb.set_trace()
 
-        # ========== Scale 4. ========== 
-        scale = 4
+        # # ========== Scale 4. ========== 
+        # scale = 4
 
-        H4 = f40.size()[2]
-        W4 = f40.size()[3]
+        # H4 = f40.size()[2]
+        # W4 = f40.size()[3]
 
-        # Temporary disparity.
-        dispT = torch.zeros((B, 1, H4, W4), dtype=torch.float32).cuda()
-        dispT.requires_grad = False
+        # # Temporary disparity.
+        # dispT = torch.zeros((B, 1, H4, W4), dtype=torch.float32).cuda()
+        # dispT.requires_grad = False
 
-        disp4, _ = self.rb( f40, f41, dispT )
+        # disp4, _ = self.rb( f40, f41, dispT )
 
         # ========== Scale 3. ==========
         scale = 3
@@ -552,9 +577,15 @@ class RecurrentStereo(nn.Module):
         H3 = f30.size()[2]
         W3 = f30.size()[3]
 
-        disp4Up = F.interpolate( disp4, (H3, W3), mode="bilinear", align_corners=False ) * 2
+        # Temporary disparity.
+        dispT = torch.zeros((B, 1, H3, W3), dtype=torch.float32).cuda()
+        dispT.requires_grad = False
 
-        disp3, _ = self.rb( f30, f31, disp4Up )
+        # disp4Up = F.interpolate( disp4, (H3, W3), mode="bilinear", align_corners=False ) * 2
+
+        # disp3, _ = self.rb( f30, f31, disp4Up )
+        disp3, _ = self.rb2( f30, f31, dispT )
+        disp3 = F.relu(disp3, inplace=True)
 
         # ========== Scale 2. ==========
         scale = 2
@@ -562,9 +593,11 @@ class RecurrentStereo(nn.Module):
         H2 = f20.size()[2]
         W2 = f20.size()[3]
 
-        disp3Up = F.interpolate( disp3, (H2, W2), mode="bilinear", align_corners=False ) * 2
+        # disp3Up = F.interpolate( disp3, (H2, W2), mode="bilinear", align_corners=False ) * 2
+        disp3Up = self.upsampler3( disp3 ) * 2
 
-        disp2, _ = self.rb( f20, f21, disp3Up )
+        disp2, _ = self.rb2( f20, f21, disp3Up )
+        disp2 = F.relu(disp2, inplace=True)
 
         # ========== Scale 1. ==========
         scale = 1
@@ -572,9 +605,10 @@ class RecurrentStereo(nn.Module):
         H1 = f10.size()[2]
         W1 = f10.size()[3]
 
-        disp2Up = F.interpolate( disp2, (H1, W1), mode="bilinear", align_corners=False ) * 2
+        # disp2Up = F.interpolate( disp2, (H1, W1), mode="bilinear", align_corners=False ) * 2
+        disp2Up = self.upsampler2( disp2 ) * 2
 
-        disp1, _ = self.rb( f10, f11, disp2Up )
+        disp1, _ = self.rb0( f10, f11, disp2Up )
 
         # ========== Scale 0. ==========
         scale = 0
@@ -582,9 +616,10 @@ class RecurrentStereo(nn.Module):
         H0 = f00.size()[2]
         W0 = f00.size()[3]
 
-        disp1Up = F.interpolate( disp1, (H0, W0), mode="bilinear", align_corners=False ) * 2
+        # disp1Up = F.interpolate( disp1, (H0, W0), mode="bilinear", align_corners=False ) * 2
+        disp1Up = self.upsampler1( disp1 ) * 2
 
-        disp0, _ = self.rb( f00, f01, disp1Up )
+        disp0, _ = self.rb0( f00, f01, disp1Up )
 
         # ========== Disparity refinement. ==========
 
@@ -592,9 +627,9 @@ class RecurrentStereo(nn.Module):
         disp0 = disp0 + dispRe0
 
         if ( self.training ):
-            return disp0, disp1, disp2, disp3, disp4
+            return disp0, disp1, disp2, disp3#, disp4
         else:
-            return disp0, disp1, disp2, disp3, disp4
+            return disp0, disp1, disp2, disp3#, disp4
 
 if __name__ == "__main__":
     print("Test RecurrentStereo.py")

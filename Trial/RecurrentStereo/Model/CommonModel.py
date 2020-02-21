@@ -23,7 +23,8 @@ class SelectedReLU(nn.Module):
     def __init__(self):
         super(SelectedReLU, self).__init__()
 
-        self.model = nn.SELU(True)
+        # self.model = nn.SELU(True)
+        self.model = nn.LeakyReLU(0.1)
 
     def forward(self, x):
         return self.model(x)

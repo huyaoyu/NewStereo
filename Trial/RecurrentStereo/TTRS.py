@@ -56,7 +56,9 @@ class TrainTestRecurrentStereo(TrainTestBase):
     # Overload parent's function.
     def init_workflow(self):
         # === Create the AccumulatedObjects. ===
+        self.frame.add_accumulated_value("loss0", 10)
         self.frame.add_accumulated_value("lossTest", 10)
+        self.frame.add_accumulated_value("lossTest0", 10)
         self.frame.add_accumulated_value("TrueDispAvg", 1)
 
         self.frame.AV["loss"].avgWidth = 10
@@ -67,12 +69,12 @@ class TrainTestRecurrentStereo(TrainTestBase):
             self.frame.AVP.append(\
                 WorkFlow.PLTIntermittentPlotter(\
                     self.frame.workingDir + "/IntPlot", 
-                    "loss", self.frame.AV, ["loss"], [True], semiLog=True) )
+                    "loss", self.frame.AV, ["loss", "loss0"], [True, True], semiLog=True) )
 
             self.frame.AVP.append(\
                 WorkFlow.PLTIntermittentPlotter(\
                     self.frame.workingDir + "/IntPlot", 
-                    "lossTest", self.frame.AV, ["lossTest"], [True], semiLog=True) )
+                    "lossTest", self.frame.AV, ["lossTest", "lossTest0"], [True, True], semiLog=True) )
             
             self.frame.AVP.append(\
                 WorkFlow.PLTIntermittentPlotter(\
@@ -81,11 +83,11 @@ class TrainTestRecurrentStereo(TrainTestBase):
         else:
             self.frame.AVP.append(\
                 WorkFlow.VisdomLinePlotter(\
-                    "loss", self.frame.AV, ["loss"], [True], semiLog=True) )
+                    "loss", self.frame.AV, ["loss", "loss0"], [True, True], semiLog=True) )
 
             self.frame.AVP.append(\
                 WorkFlow.VisdomLinePlotter(\
-                    "lossTest", self.frame.AV, ["lossTest"], [True], semiLog=True) )
+                    "lossTest", self.frame.AV, ["lossTest", "lossTest0"], [True, True], semiLog=True) )
 
             self.frame.AVP.append(\
                 WorkFlow.VisdomLinePlotter(\
@@ -178,27 +180,42 @@ class TrainTestRecurrentStereo(TrainTestBase):
         dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
         dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
         dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        # dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
 
         self.optimizer.zero_grad()
 
         # Forward.
-        disp0, disp1, disp2, disp3, disp4 = self.model(stack0, stack1)
+        disp0, disp1, disp2, disp3 = self.model(stack0, stack1)
+
+        # One-tenors.
+        one0 = torch.ones_like(dispL ).cuda()
+        one1 = torch.ones_like(dispL1).cuda()
+        one2 = torch.ones_like(dispL2).cuda()
+        one3 = torch.ones_like(dispL3).cuda()
+        eps = 1e-5
 
         # import ipdb; ipdb.set_trace()
 
+        loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
+
+        # loss = \
+        #     +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+        #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+        #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+        #     +  loss0
+
         loss = \
-            + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-            +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-            +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
+              F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
+            + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
+            + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
+            + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
 
         loss.backward()
 
         self.optimizer.step()
 
-        self.frame.AV["loss"].push_back( loss.item() )
+        self.frame.AV["loss"].push_back( loss.item() * 100 )
+        self.frame.AV["loss0"].push_back( loss0.item() )
         self.frame.AV["TrueDispAvg"].push_back( dispL.mean().item() )
 
         self.countTrain += 1
@@ -438,28 +455,42 @@ class TrainTestRecurrentStereo(TrainTestBase):
         dispL1 = F.interpolate( dispL * self.params.amp, (H //  2, W //  2), mode="bilinear", align_corners=False ) * 0.5**1
         dispL2 = F.interpolate( dispL * self.params.amp, (H //  4, W //  4), mode="bilinear", align_corners=False ) * 0.5**2
         dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
-        dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+        # dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
+
+        # One-tenors.
+        one0 = torch.ones_like(dispL ).cuda()
+        one1 = torch.ones_like(dispL1).cuda()
+        one2 = torch.ones_like(dispL2).cuda()
+        one3 = torch.ones_like(dispL3).cuda()
+        eps = 1e-5
 
         with torch.no_grad():
             # Forward.
-            disp0, disp1, disp2, disp3, disp4 = self.model(stack0, stack1)
+            disp0, disp1, disp2, disp3 = self.model(stack0, stack1)
+
+            loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
             
+            # loss = \
+            #     +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+            #     +  loss0
+
             loss = \
-                + 16 * F.smooth_l1_loss( disp4, dispL4, reduction="mean" ) \
-                +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-                +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-                +      F.smooth_l1_loss( disp0, dispL, reduction="mean" )
+                  F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
+                + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
+                + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
+                + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
 
             # Find all the limits of the ground truth.
             limits = np.zeros((4,2), dtype=np.float32)
             limits[0, 0] = dispL1.min(); limits[0, 1] = dispL1.max()
             limits[1, 0] = dispL2.min(); limits[1, 1] = dispL2.max()
             limits[2, 0] = dispL3.min(); limits[2, 1] = dispL3.max()
-            limits[3, 0] = dispL4.min(); limits[3, 1] = dispL4.max()
+            # limits[3, 0] = dispL4.min(); limits[3, 1] = dispL4.max()
 
-            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3, dispL4 ], limits )
-            predDP = self.concatenate_disparity( [ disp1, disp2, disp3, disp4 ], limits )
+            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3 ], limits )
+            predDP = self.concatenate_disparity( [ disp1, disp2, disp3 ], limits )
 
             # Apply metrics.
             dispLNP = dispL.squeeze(1).cpu().numpy()
@@ -484,9 +515,14 @@ class TrainTestRecurrentStereo(TrainTestBase):
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):
-            self.frame.AV["lossTest"].push_back(loss.item(), self.countTest)
+            self.frame.AV["lossTest"].push_back(loss.item() * 100, self.countTest)
         else:
             self.frame.logger.info("Could not find \"lossTest\"")
+
+        if ( True == self.frame.have_accumulated_value("lossTest0") ):
+            self.frame.AV["lossTest0"].push_back(loss0.item(), self.countTest)
+        else:
+            self.frame.logger.info("Could not find \"lossTest0\"")
 
         if ( flagSave ):
             self.frame.plot_accumulated_values()
