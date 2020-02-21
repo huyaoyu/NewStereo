@@ -187,34 +187,34 @@ class TrainTestRecurrentStereo(TrainTestBase):
         # Forward.
         disp0, disp1, disp2, disp3 = self.model(stack0, stack1)
 
-        # One-tenors.
-        one0 = torch.ones_like(dispL ).cuda()
-        one1 = torch.ones_like(dispL1).cuda()
-        one2 = torch.ones_like(dispL2).cuda()
-        one3 = torch.ones_like(dispL3).cuda()
-        eps = 1e-5
+        # # One-tenors.
+        # one0 = torch.ones_like(dispL ).cuda()
+        # one1 = torch.ones_like(dispL1).cuda()
+        # one2 = torch.ones_like(dispL2).cuda()
+        # one3 = torch.ones_like(dispL3).cuda()
+        # eps = 1e-5
 
         # import ipdb; ipdb.set_trace()
 
         loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
-        # loss = \
-        #     +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-        #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-        #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-        #     +  loss0
-
         loss = \
-              F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
-            + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
-            + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
-            + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
+            +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+            +  loss0
+
+        # loss = \
+        #       F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
+        #     + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
+        #     + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
+        #     + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
 
         loss.backward()
 
         self.optimizer.step()
 
-        self.frame.AV["loss"].push_back( loss.item() * 100 )
+        self.frame.AV["loss"].push_back( loss.item() )
         self.frame.AV["loss0"].push_back( loss0.item() )
         self.frame.AV["TrueDispAvg"].push_back( dispL.mean().item() )
 
@@ -457,12 +457,12 @@ class TrainTestRecurrentStereo(TrainTestBase):
         dispL3 = F.interpolate( dispL * self.params.amp, (H //  8, W //  8), mode="bilinear", align_corners=False ) * 0.5**3
         # dispL4 = F.interpolate( dispL * self.params.amp, (H // 16, W // 16), mode="bilinear", align_corners=False ) * 0.5**4
 
-        # One-tenors.
-        one0 = torch.ones_like(dispL ).cuda()
-        one1 = torch.ones_like(dispL1).cuda()
-        one2 = torch.ones_like(dispL2).cuda()
-        one3 = torch.ones_like(dispL3).cuda()
-        eps = 1e-5
+        # # One-tenors.
+        # one0 = torch.ones_like(dispL ).cuda()
+        # one1 = torch.ones_like(dispL1).cuda()
+        # one2 = torch.ones_like(dispL2).cuda()
+        # one3 = torch.ones_like(dispL3).cuda()
+        # eps = 1e-5
 
         with torch.no_grad():
             # Forward.
@@ -470,17 +470,17 @@ class TrainTestRecurrentStereo(TrainTestBase):
 
             loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
             
-            # loss = \
-            #     +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-            #     +  loss0
-
             loss = \
-                  F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
-                + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
-                + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
-                + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
+                +  8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+                +  loss0
+
+            # loss = \
+            #       F.smooth_l1_loss( ( torch.abs(disp3) + 1 ) / ( dispL3 + 1 ), one3, reduction="mean" ) \
+            #     + F.smooth_l1_loss( ( torch.abs(disp2) + 1 ) / ( dispL2 + 1 ), one2, reduction="mean" ) \
+            #     + F.smooth_l1_loss( ( torch.abs(disp1) + 1 ) / ( dispL1 + 1 ), one1, reduction="mean" ) \
+            #     + F.smooth_l1_loss( ( torch.abs(disp0) + 1 ) / ( dispL  + 1 ), one0, reduction="mean" )
 
             # Find all the limits of the ground truth.
             limits = np.zeros((4,2), dtype=np.float32)
@@ -515,7 +515,7 @@ class TrainTestRecurrentStereo(TrainTestBase):
 
         # Test the existance of an AccumulatedValue object.
         if ( True == self.frame.have_accumulated_value("lossTest") ):
-            self.frame.AV["lossTest"].push_back(loss.item() * 100, self.countTest)
+            self.frame.AV["lossTest"].push_back(loss.item(), self.countTest)
         else:
             self.frame.logger.info("Could not find \"lossTest\"")
 
