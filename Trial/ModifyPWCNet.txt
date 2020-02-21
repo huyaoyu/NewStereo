@@ -1,0 +1,9 @@
+Use stacked image.
+Calculate the disparity at different levels in a residual mannar.
+Refinement/Contextual use separate feature extractor.
+Refinement is an encoder-decoder with skip connection.
+Correlation larger radius (24).
+BatchNomarlization.
+Cost consists of comparable numbers of channels for correlation and feature.
+Supervise the upscaled disparity.
+Smallest level disparity goes through a leakyReLU(0.3).

@@ -385,6 +385,15 @@ class PWCNetStereoRes(nn.Module):
         nd = self.params.maxDisp + 1 + self.params.maxDisp
 
         self.corrActivation = cm.Conv_W(nd, nd, k=1)
+        self.costFeatureExtractor3 = nn.Sequential( \
+            cm.Conv_W(128, nd, k=3, activation=None), \
+            FeatureNormalization(nd) )
+        self.costFeatureExtractor2 = nn.Sequential( \
+            cm.Conv_W(64, nd, k=3, activation=None), \
+            FeatureNormalization(nd) )
+        self.costFeatureExtractor1 = nn.Sequential( \
+            cm.Conv_W(32, nd, k=3, activation=None), \
+            FeatureNormalization(nd) )
 
         # Disparity at various scale.
         # interChList = [ 128, 128, 96, 64, 32 ]
@@ -399,9 +408,9 @@ class PWCNetStereoRes(nn.Module):
         # self.disp2 = Cost2DisparityAndFeatureRes(nd + 64, interChList)
         # self.disp1 = Cost2DisparityAndFeatureRes(nd + 32, interChList, flagUp=False)
 
-        self.disp3 = Cost2DisparityAndFeature(nd, 1, interChList)
-        self.disp2 = Cost2DisparityAndFeatureRes(nd, interChList)
-        self.disp1 = Cost2DisparityAndFeatureRes(nd, interChList, flagUp=False)
+        self.disp3 = Cost2DisparityAndFeature(nd + nd, 1, interChList)
+        self.disp2 = Cost2DisparityAndFeatureRes(nd + nd, interChList)
+        self.disp1 = Cost2DisparityAndFeatureRes(nd + nd, interChList, flagUp=False)
 
         # self.refine = DisparityRefine( nd + 32 + chFeat )
         self.refine = EDRegression( 32 + 1 )
@@ -534,11 +543,15 @@ class PWCNetStereoRes(nn.Module):
         cost3 = self.corrActivation( cost3 )
 
         # Concatenate.
-        # cost3 = torch.cat( (cost3, f30), 1 )
+        f30 = self.costFeatureExtractor3(f30)
+        cost3 = torch.cat( (cost3, f30), 1 )
 
         # Disparity.
         # disp3, upDisp3 = self.disp3(cost3, upDisp4)
         disp3, upDisp3, upFeat3 = self.disp3(cost3)
+
+        disp3   = F.leaky_relu(disp3,   0.3, inplace=True)
+        upDisp3 = F.leaky_relu(upDisp3, 0.3, inplace=True)
 
         # ========== Scale 2. ==========
         scale = 2
@@ -557,7 +570,8 @@ class PWCNetStereoRes(nn.Module):
         cost2 = self.corrActivation( cost2 )
 
         # Concatenate.
-        # cost2 = torch.cat( (cost2, f20), 1 )
+        f20 = self.costFeatureExtractor2(f20)
+        cost2 = torch.cat( (cost2, f20), 1 )
 
         # Disparity.
         disp2, upDisp2 = self.disp2(cost2, upDisp3)
@@ -579,25 +593,31 @@ class PWCNetStereoRes(nn.Module):
         cost1 = self.corrActivation( cost1 )
 
         # Concatenate.
-        # cost1 = torch.cat( (cost1, f10), 1 )
+        f10 = self.costFeatureExtractor1(f10)
+        cost1 = torch.cat( (cost1, f10), 1 )
 
         # Disparity.
         disp1, feat1 = self.disp1(cost1, upDisp2)
 
         # Final up-sample.
-        disp0 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
+        upDisp1 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
 
         # ========== Disparity refinement. ==========
         # disp1 = self.refine( disp1, feat1 )
         r10 = self.re1(gray0)
 
-        dispRe0 = self.refine( torch.cat((r10, disp0), 1) )
-        disp0 = disp0 + dispRe0
+        dispRe0 = self.refine( torch.cat((r10, upDisp1), 1) )
+        disp0 = upDisp1 + dispRe0
+
+        # if ( self.training ):
+        #     return disp0, disp1, disp2, disp3#, disp4, disp5, disp6
+        # else:
+        #     return disp0, disp1, disp2, disp3#, disp4, disp5
 
         if ( self.training ):
-            return disp0, disp1, disp2, disp3#, disp4, disp5, disp6
+            return disp0, upDisp1, upDisp2, upDisp3
         else:
-            return disp0, disp1, disp2, disp3#, disp4, disp5
+            return disp0, upDisp1, upDisp2, upDisp3
 
         # if ( self.training ):
         #     return disp5, disp4
