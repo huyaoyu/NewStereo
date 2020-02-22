@@ -7,3 +7,4 @@ BatchNomarlization.
 Cost consists of comparable numbers of channels for correlation and feature.
 Supervise the upscaled disparity.
 Smallest level disparity goes through a leakyReLU(0.3).
+Using k=3.

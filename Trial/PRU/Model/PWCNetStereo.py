@@ -550,8 +550,8 @@ class PWCNetStereoRes(nn.Module):
         # disp3, upDisp3 = self.disp3(cost3, upDisp4)
         disp3, upDisp3, upFeat3 = self.disp3(cost3)
 
-        disp3   = F.leaky_relu(disp3,   0.3, inplace=True)
-        upDisp3 = F.leaky_relu(upDisp3, 0.3, inplace=True)
+        disp3   = F.leaky_relu(disp3,   0.3, inplace=False)
+        upDisp3 = F.leaky_relu(upDisp3, 0.3, inplace=False)
 
         # ========== Scale 2. ==========
         scale = 2
