@@ -210,8 +210,16 @@ class EDRegression(nn.Module):
     def __init__(self, inCh):
         super(EDRegression, self).__init__()
 
-        self.encoder0_In  = inCh
-        self.encoder0_Out = 128
+        self.dispNorm = nn.BatchNorm2d(1, track_running_stats=False)
+        self.dispFE   = nn.Sequential( \
+            cm.Conv_W( 1, inCh, k=3, activation=None ), \
+            cm.ResBlock( inCh, activation=cm.SelectedReLU() ), \
+            nn.BatchNorm2d( inCh, track_running_stats=False ) )
+
+        self.featNorm = nn.BatchNorm2d(inCh, track_running_stats=False)
+
+        self.encoder0_In  = inCh*2
+        self.encoder0_Out = 64
         self.encoder1_In  = self.encoder0_Out
         self.encoder1_Out = self.encoder1_In * 2
         self.encoder2_In  = self.encoder1_Out
@@ -224,7 +232,7 @@ class EDRegression(nn.Module):
         self.decoder1_In  = self.decoder2_Out + self.encoder1_Out
         self.decoder1_Out = self.decoder3_Out
         self.decoder0_In  = self.decoder1_Out + self.encoder0_Out
-        self.decoder0_Out = 128
+        self.decoder0_Out = 64
 
         # Encoder-decoder.
         self.e0 = cm.Conv_Half( self.encoder0_In, self.encoder0_Out, k=3, activation=cm.SelectedReLU() )
@@ -239,13 +247,20 @@ class EDRegression(nn.Module):
         # self.finalUp = cm.Deconv_DoubleSize( self.decoder0_Out, 64, k=4, p=1, activation=cm.SelectedReLU() )
 
         # Regression.
-        self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
+        # self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
         
         self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
         self.rg1 = cm.Conv_W( 64, 1, k=3 )
 
-    def forward(self, x):
-        fe0 = self.e0(x)
+    def forward(self, x, disp):
+        disp = self.dispNorm(disp)
+        dispFeat = self.dispFE(disp)
+
+        x = self.featNorm(x)
+
+        c = torch.cat( (dispFeat, x), 1 )
+
+        fe0 = self.e0(c)
         fe1 = self.e1(fe0)
         fe2 = self.e2(fe1)
 
@@ -259,11 +274,11 @@ class EDRegression(nn.Module):
         fd0 = self.d0(fd1)
         # fd0 = self.finalUp(fd0)
 
-        # By-pass.
-        bp = self.bp(x)
+        # # By-pass.
+        # bp = self.bp(x)
 
         # Regression.
-        disp0 = self.rg0( fd0 + bp.mul(0.1) )
+        disp0 = self.rg0( fd0 )
         disp1 = self.rg1( disp0 )
 
         return disp1
@@ -410,7 +425,7 @@ class PWCNetStereoRes(nn.Module):
 
         self.disp3 = Cost2DisparityAndFeature(nd + nd, 1, interChList)
         self.disp2 = Cost2DisparityAndFeatureRes(nd + nd, interChList)
-        self.disp1 = Cost2DisparityAndFeatureRes(nd + nd, interChList, flagUp=False)
+        self.disp1 = Cost2DisparityAndFeatureRes(nd + nd, interChList, flagUp=True)
 
         # self.refine = DisparityRefine( nd + 32 + chFeat )
         self.refine = EDRegression( 32 + 1 )
@@ -597,16 +612,17 @@ class PWCNetStereoRes(nn.Module):
         cost1 = torch.cat( (cost1, f10), 1 )
 
         # Disparity.
-        disp1, feat1 = self.disp1(cost1, upDisp2)
+        disp1, upDisp1 = self.disp1(cost1, upDisp2)
 
         # Final up-sample.
-        upDisp1 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
+        # upDisp1 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
+        upDisp1 = upDisp1 * 2
 
         # ========== Disparity refinement. ==========
         # disp1 = self.refine( disp1, feat1 )
         r10 = self.re1(gray0)
 
-        dispRe0 = self.refine( torch.cat((r10, upDisp1), 1) )
+        dispRe0 = self.refine( r10, upDisp1 )
         disp0 = upDisp1 + dispRe0
 
         # if ( self.training ):
