@@ -213,7 +213,7 @@ class EDRegression(nn.Module):
         self.dispNorm = nn.BatchNorm2d(1, track_running_stats=False)
         self.dispFE   = nn.Sequential( \
             cm.Conv_W( 1, inCh, k=3, activation=None ), \
-            cm.ResBlock( inCh, activation=cm.SelectedReLU() ), \
+            cm.ResBlock( inCh, k=3, activation=cm.SelectedReLU() ), \
             nn.BatchNorm2d( inCh, track_running_stats=False ) )
 
         self.featNorm = nn.BatchNorm2d(inCh, track_running_stats=False)
@@ -428,7 +428,7 @@ class PWCNetStereoRes(nn.Module):
         self.disp1 = Cost2DisparityAndFeatureRes(nd + nd, interChList, flagUp=True)
 
         # self.refine = DisparityRefine( nd + 32 + chFeat )
-        self.refine = EDRegression( 32 + 1 )
+        self.refine = EDRegression( 32 )
 
         # Warp.
         self.warp = WarpByDisparity()

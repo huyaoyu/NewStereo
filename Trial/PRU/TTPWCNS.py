@@ -211,8 +211,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         #     +  loss0
 
         loss = \
-               4 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
-            +  2 * F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
+               2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
+            +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
             +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
             +  loss0
 
@@ -496,8 +496,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
             #     +  loss0
 
             loss = \
-                   4 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
-                +  2 * F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
+                   2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
+                +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
                 +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
                 +  loss0
 
