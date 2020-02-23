@@ -195,8 +195,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.zero_grad()
 
         # Forward.
-        # disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
-        disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
+        disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
+        # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
         # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
 
@@ -204,17 +204,17 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
-        # loss = \
-        #        8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-        #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-        #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-        #     +  loss0
-
         loss = \
-               2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
-            +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
-            +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
+               8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
             +  loss0
+
+        # loss = \
+        #        2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
+        #     +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
+        #     +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
+        #     +  loss0
 
         # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
@@ -482,24 +482,24 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         with torch.no_grad():
             # Forward.
-            # disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
-            disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
+            disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
+            # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
             # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
 
             loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
             
-            # loss = \
-            #        8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            #     +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            #     +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-            #     +  loss0
-
             loss = \
-                   2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
-                +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
-                +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
+                   8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
                 +  loss0
+
+            # loss = \
+            #        2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
+            #     +  F.smooth_l1_loss( upDisp2, dispL1, reduction="mean" ) \
+            #     +  F.smooth_l1_loss( upDisp1, dispL, reduction="mean" ) \
+            #     +  loss0
 
             # loss = F.smooth_l1_loss( disp1, dispL1, reduction="mean" )
 
@@ -518,8 +518,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
             # limits[3, 0] = dispL4.min(); limits[3, 1] = dispL4.max()
             # limits[4, 0] = dispL5.min(); limits[4, 1] = dispL5.max()
 
-            trueDP = self.concatenate_disparity( [ dispL, dispL1, dispL2 ], limits )
-            predDP = self.concatenate_disparity( [ upDisp1, upDisp2, upDisp3  ], limits )
+            trueDP = self.concatenate_disparity( [ dispL1, dispL2, dispL3 ], limits )
+            predDP = self.concatenate_disparity( [ disp1, disp2, disp3  ], limits )
 
             # Apply metrics.
             dispLNP = dispL.squeeze(1).cpu().numpy()

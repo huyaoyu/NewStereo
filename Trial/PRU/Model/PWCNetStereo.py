@@ -625,20 +625,15 @@ class PWCNetStereoRes(nn.Module):
         dispRe0 = self.refine( r10, upDisp1 )
         disp0 = upDisp1 + dispRe0
 
-        # if ( self.training ):
-        #     return disp0, disp1, disp2, disp3#, disp4, disp5, disp6
-        # else:
-        #     return disp0, disp1, disp2, disp3#, disp4, disp5
-
         if ( self.training ):
-            return disp0, upDisp1, upDisp2, upDisp3
+            return disp0, disp1, disp2, disp3#, disp4, disp5, disp6
         else:
-            return disp0, upDisp1, upDisp2, upDisp3
+            return disp0, disp1, disp2, disp3#, disp4, disp5
 
         # if ( self.training ):
-        #     return disp5, disp4
+        #     return disp0, upDisp1, upDisp2, upDisp3
         # else:
-        #     return disp5, disp4
+        #     return disp0, upDisp1, upDisp2, upDisp3
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")
