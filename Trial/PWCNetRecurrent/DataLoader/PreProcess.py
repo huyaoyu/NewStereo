@@ -116,7 +116,7 @@ class ResizeDisparityNoTensor(object):
     def __call__(self, x):
         # Assuming an OpenCV image with float data type.
         # The factor.
-        f = self.w / x.shape[1]
+        f = 1.0 * self.w / x.shape[1]
 
         return cv2.resize(x, (self.w, self.h), interpolation=cv2.INTER_LINEAR) * f
 
