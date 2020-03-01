@@ -160,11 +160,11 @@ def estimate_initial_disparity(img0, img1, model, initSize):
     t0 = convert_image_2_tensor(rImg0)
     t1 = convert_image_2_tensor(rImg1)
 
-    # Create stacks.
-    stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
-    stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
-
     with torch.no_grad():
+        # Create stacks.
+        stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
+        stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
+
         # Forward.
         disp0, disp1, disp2, disp3 = model(stack0, stack1, torch.zeros((1)), torch.zeros((1)))
 
@@ -294,10 +294,10 @@ if __name__ == "__main__":
     
     # Save the initial disparity prediction.
     outFnBase = "%s/UpInitDisp" % (args.outdir)
-    save_disp(outFnBase, upInitDisp, dispMin=0, dispMax=192)
+    save_disp(outFnBase, upInitDisp, dispMin=0, dispMax=1024)
 
     outFnBase = "%s/initDisp" % (args.outdir)
-    save_disp(outFnBase, initDisp, dispMin=0, dispMax=192)
+    save_disp(outFnBase, initDisp, dispMin=0, dispMax=1024)
 
     # Original images.
     print("Original images.")
@@ -324,12 +324,6 @@ if __name__ == "__main__":
     upInitDispTensor = left_pad_tensor(upInitDispTensor, patchSize)
     upInitDispTensor.requires_grad = False
 
-    # Create stacks.
-    stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
-    stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
-    stack0.requires_grad = False
-    stack1.requires_grad = False
-
     # Loop over the input image area.
     tH = t0.size()[2]
     tW = t0.size()[3]
@@ -344,6 +338,15 @@ if __name__ == "__main__":
         y0 = i*pH
         y1 = y0 + pH - 1
 
+        # Create stacks.
+        with torch.no_grad():
+            stack0 = stack_single_channel_tensor(\
+                t0[:, :, y0:y1+1,:], shift=16, radius=32)
+            stack1 = stack_single_channel_tensor(\
+                t1[:, :, y0:y1+1,:], shift=16, radius=32)
+            stack0.requires_grad = False
+            stack1.requires_grad = False
+
         for j in range(nCol):
             x0 = j*pW
             x1 = x0 + pW - 1
@@ -353,18 +356,18 @@ if __name__ == "__main__":
             # Work on the specified image region.
             with torch.no_grad():
                 disp0, extra = recModel.apply( \
-                    stack0, stack1, upInitDispTensor, \
-                    (x0, y0, x1, y1), flagWarp=False )
+                    stack0, stack1, upInitDispTensor[:,:,y0:y1+1,:], \
+                    (x0, 0, x1, pH-1), flagWarp=False )
 
-            # Copy result.
-            fusedDisp[:, :, y0:y1+1, x0:x1+1] = disp0
+                # Copy result.
+                fusedDisp[:, :, y0:y1+1, x0:x1+1] = disp0
 
     # Save the disparity.
     fusedDispCPU = fusedDisp.detach().squeeze(0).squeeze(0).cpu().numpy()
     outFnBase = "%s/FusedDisp" % (args.outdir)
-    save_disp(outFnBase, fusedDispCPU, dispMin=0, dispMax=256)
+    save_disp(outFnBase, fusedDispCPU, dispMin=0, dispMax=1024)
 
     outFnBase = "%s/FusedDispCropped" % (args.outdir)
-    save_disp(outFnBase, fusedDispCPU[0:hOri, tW-wOri:], dispMin=0, dispMax=256)
+    save_disp(outFnBase, fusedDispCPU[0:hOri, tW-wOri:], dispMin=0, dispMax=1024)
 
     print("Done.")
