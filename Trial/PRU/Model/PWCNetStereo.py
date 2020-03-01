@@ -25,10 +25,12 @@ import torch.nn.functional as F
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PWCNetStereo/Model")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRU/Model")
     import CommonModel as cm
+    from StereoUtility import WarpByDisparity
 else:
     from . import CommonModel as cm
+    from .StereoUtility import WarpByDisparity
 
 import Corr2D
 
@@ -179,15 +181,15 @@ class Cost2DisparityAndFeatureRes(nn.Module):
     def forward(self, x, lastDisp):
         x = self.regulator(x)
 
-        disp = self.disp(x)
-        disp = disp + lastDisp
+        dispRes = self.disp(x)
+        disp    = dispRes + lastDisp
 
         if ( self.upDisp is not None ):
             upDisp = self.upDisp(disp)
 
-            return disp, upDisp
+            return disp, upDisp, dispRes
         else:
-            return disp, x
+            return disp, x, dispRes
 
 class DisparityRefine(nn.Module):
     def __init__(self, inCh):
@@ -283,55 +285,6 @@ class EDRegression(nn.Module):
 
         return disp1
 
-class WarpByDisparity(nn.Module):
-    def __init__(self):
-        super(WarpByDisparity, self).__init__()
-
-    def forward(self, x, disp):
-        """
-        This is adopted from the code of PWCNet.
-        """
-        
-        B, C, H, W = x.size()
-
-        # Mesh grid. 
-        xx = torch.arange(0, W).view(1,-1).repeat(H,1)
-        yy = torch.arange(0, H).view(-1,1).repeat(1,W)
-
-        xx = xx.view(1,1,H,W).repeat(B,1,1,1)
-        yy = yy.view(1,1,H,W).repeat(B,1,1,1)
-
-        grid = torch.cat((xx,yy),1).float()
-
-        if ( x.is_cuda ):
-            grid = grid.cuda()
-
-        vgrid = grid.clone()
-
-        # import ipdb; ipdb.set_trace()
-
-        # Only the x-coodinate is changed. 
-        # Disparity values are always non-negative.
-        vgrid[:, 0, :, :] = vgrid[:, 0, :, :] - disp.squeeze(1) # Disparity only has 1 channel. vgrid[:, 0, :, :] will only have 3 dims.
-
-        # Scale grid to [-1,1]. 
-        vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:].clone() / max(W-1,1)-1.0
-        vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:].clone() / max(H-1,1)-1.0
-
-        vgrid = vgrid.permute(0,2,3,1)
-
-        output = nn.functional.grid_sample(x, vgrid)
-        
-        mask = torch.ones(x.size())
-        if ( x.is_cuda ):
-            mask = mask.cuda()
-        mask = nn.functional.grid_sample(mask, vgrid)
-        
-        mask[mask<0.9999] = 0
-        mask[mask>0]      = 1
-        
-        return output * mask
-
 class PWCNetStereoParams(object):
     def __init__(self):
         super(PWCNetStereoParams, self).__init__()
@@ -378,17 +331,12 @@ class PWCNetStereoRes(nn.Module):
         self.fe2 = ConvExtractor( 32,  64)
         self.fe3 = ConvExtractor( 64,  128)
         # self.fe4 = ConvExtractor( 64,  128)
-        # self.fe5 = ConvExtractor( 128, 256)
-        # self.fe6 = ConvExtractor(128, 196)
-
-        # import ipdb; ipdb.set_trace()
 
         # Batch normalization layers.
         self.fn1 = FeatureNormalization(32)
         self.fn2 = FeatureNormalization(64)
         self.fn3 = FeatureNormalization(128)
         # self.fn4 = FeatureNormalization(128)
-        # self.fn5 = FeatureNormalization(256)
 
         # Correlation.
         self.corr2dm = Corr2D.Corr2DM( self.params.maxDisp, \
@@ -427,7 +375,6 @@ class PWCNetStereoRes(nn.Module):
         self.disp2 = Cost2DisparityAndFeatureRes(nd + nd, interChList)
         self.disp1 = Cost2DisparityAndFeatureRes(nd + nd, interChList, flagUp=True)
 
-        # self.refine = DisparityRefine( nd + 32 + chFeat )
         self.refine = EDRegression( 32 )
 
         # Warp.
@@ -478,44 +425,6 @@ class PWCNetStereoRes(nn.Module):
 
         # f40 = self.fe4(f30)
         # f41 = self.fe4(f31)
-
-        # f50 = self.fe5(f40)
-        # f51 = self.fe5(f41)
-
-        # import ipdb; ipdb.set_trace()
-
-        # f60 = self.fe6(f50)
-        # f61 = self.fe6(f51)
-
-        # # ========== Scale 6. ========== 
-        # # Correlation.
-        # cost6 = self.corr2dm( f60, f61 )
-        # cost6 = self.corrActivation( cost6 )
-
-        # # Disparity.
-        # disp6, upDisp6, upFeat6 = self.disp6(cost6)
-
-        # ========== Scale 5. ==========
-        # scale = 5
-
-        # # Warp.
-        # warp5 = self.warp( fe51, upDisp6 * self.params.amp * 0.5**scale )
-        # ========
-        # warp5 = f51
-
-        # # Normalization
-        # f50   = self.fn5(f50)
-        # warp5 = self.fn5(warp5)
-
-        # # Correlation.
-        # cost5 = self.corr2dm( f50, warp5 )
-        # cost5 = self.corrActivation( cost5 )
-
-        # # # Concatenate.
-        # # cost5 = torch.cat( (cost5, f50, upDisp6, upFeat6), 1 )
-
-        # # Disparity.
-        # disp5, upDisp5, upFeat5 = self.disp5(cost5)
 
         # # ========== Scale 4. ==========
         # scale = 4
@@ -589,7 +498,7 @@ class PWCNetStereoRes(nn.Module):
         cost2 = torch.cat( (cost2, f20), 1 )
 
         # Disparity.
-        disp2, upDisp2 = self.disp2(cost2, upDisp3)
+        disp2, upDisp2, dispRes2 = self.disp2(cost2, upDisp3)
 
         # ========== Scale 1. ==========
         scale = 1
@@ -612,28 +521,58 @@ class PWCNetStereoRes(nn.Module):
         cost1 = torch.cat( (cost1, f10), 1 )
 
         # Disparity.
-        disp1, upDisp1 = self.disp1(cost1, upDisp2)
-
-        # Final up-sample.
-        # upDisp1 = F.interpolate( disp1, ( H, W ), mode="bilinear", align_corners=False ) * 2
+        disp1, upDisp1, dispRes1 = self.disp1(cost1, upDisp2)
         upDisp1 = upDisp1 * 2
 
         # ========== Disparity refinement. ==========
-        # disp1 = self.refine( disp1, feat1 )
         r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
         disp0 = upDisp1 + dispRe0
 
         if ( self.training ):
-            return disp0, disp1, disp2, disp3#, disp4, disp5, disp6
+            return disp0, disp1, disp2, disp3#, disp4
         else:
-            return disp0, disp1, disp2, disp3#, disp4, disp5
+            return disp0, disp1, disp2, disp3#, disp4
 
-        # if ( self.training ):
-        #     return disp0, upDisp1, upDisp2, upDisp3
-        # else:
-        #     return disp0, upDisp1, upDisp2, upDisp3
+    def one_shot(self, gray0, gray1, initDisp):
+        """
+        gray0 and gray1 are the warped, stacked features/images.
+        initDisp is the initial disparity map having the same HxW dimension.
+        """
+
+        # Get the image size of initDisp.
+        H = initDisp.size()[2]
+        W = initDisp.size()[3]
+
+        halfDisp = F.interpolate( initDisp, (H//2, W//2), mode="bilinear", align_corners=False ) * 1.0*(W//2)/W
+
+        # Feature extraction.
+        f10 = self.fe1(gray0)
+        f11 = self.fe1(gray1)
+
+        # Normalization.
+        f10 = self.fn1(f10)
+        f11 = self.fn1(f11)
+
+        # Correlation.
+        cost1 = self.corr2dm( f10, f11 )
+        cost1 = self.corrActivation( cost1 )
+
+        f10 = self.costFeatureExtractor1(f10)
+        cost1 = torch.cat( (cost1, f10), 1 )
+
+        # Disparity.
+        disp1, upDisp1, dispRes1 = self.disp1(cost1, halfDisp)
+        upDisp1 = upDisp1 * 2
+
+        # ========== Disparity refinement. ==========
+        r10 = self.re1(gray0)
+
+        dispRe0 = self.refine( r10, upDisp1 )
+        disp0 = upDisp1 + dispRe0
+
+        return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")

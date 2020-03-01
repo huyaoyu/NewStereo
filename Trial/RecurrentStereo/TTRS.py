@@ -126,6 +126,9 @@ class TrainTestRecurrentStereo(TrainTestBase):
 
             self.model = self.frame.load_model( self.model, modelFn )
 
+            self.frame.logger.info("model.headFE.firstConv.model[1].weight[0, 0, :, :] = \n{}".format( \
+                self.model.headFE.firstConv.model[1].weight[0, 0, :, :]))
+
         if ( self.flagCPU ):
             self.model.set_cpu_mode()
 

@@ -25,7 +25,7 @@ import torch.nn.functional as F
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PWCNetStereo/Model")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PWCNetRecurrent/Model")
     import CommonModel as cm
 else:
     from . import CommonModel as cm
