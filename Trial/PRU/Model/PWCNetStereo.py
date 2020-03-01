@@ -528,7 +528,7 @@ class PWCNetStereoRes(nn.Module):
         r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
-        disp0 = upDisp1 + dispRe0
+        disp0 = upDisp1 * ( 1 + 0.1 * dispRe0 )
 
         if ( self.training ):
             return disp0, disp1, disp2, disp3#, disp4
@@ -570,7 +570,7 @@ class PWCNetStereoRes(nn.Module):
         r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
-        disp0 = upDisp1 + dispRe0
+        disp0 = upDisp1 * ( 1 + 0.1 * dispRe0 )
 
         return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
 
