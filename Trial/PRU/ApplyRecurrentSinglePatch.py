@@ -309,12 +309,12 @@ if __name__ == "__main__":
     with torch.no_grad():
         t1 = warp(t1, upInitDispTensor)
 
-    # Create stacks.
-    stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
-    stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
+        # Create stacks.
+        stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
+        stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
 
-    # Work on the specified image region.
-    disp0, extra = recModel.apply( stack0, stack1, upInitDispTensor, coor, flagWarp=False )
+        # Work on the specified image region.
+        disp0, extra = recModel.apply( stack0, stack1, upInitDispTensor, coor, flagWarp=False )
 
     disp1 = extra[1]
 

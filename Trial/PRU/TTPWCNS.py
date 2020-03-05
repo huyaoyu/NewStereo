@@ -440,9 +440,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
             disp = pred[i, 0, :, :].cpu().numpy()
 
             fn = "%s_%02d" % (identifier, i)
-            fn = self.frame.compose_file_name(fn, "dat", subFolder=self.testResultSubfolder)
+            fn = self.frame.compose_file_name(fn, "npy", subFolder=self.testResultSubfolder)
 
-            np.savetxt( fn, disp, fmt="%+.6f" )
+            # np.savetxt( fn, disp, fmt="%+.6f" )
+            np.save( fn, disp )
 
     # Overload parent's function.
     def test(self, imgL, imgR, dispL, gradL, gradR, epochCount, flagSave=True):
