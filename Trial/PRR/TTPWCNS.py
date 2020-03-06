@@ -195,7 +195,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.zero_grad()
 
         # Forward.
-        disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
+        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(stack0, stack1, gradL, gradR)
         # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
         # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
@@ -204,11 +204,16 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
 
+        # Loss for the refinement.
+        rw = 2 * (1 - torch.exp(-torch.abs( dispL - upDisp1 ))) # The refinement loss weight.
+        lossRW = F.smooth_l1_loss( rw*disp0, rw*dispL, reduction="mean" ) # The refinement loss.
+
         loss = \
-               2 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            +  2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+               8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
             +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-            +  loss0
+            +  loss0 \
+            +  lossRW
 
         # loss = \
         #        2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \
@@ -489,12 +494,17 @@ class TrainTestPWCNetStereo(TrainTestBase):
             # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
 
             loss0 = F.smooth_l1_loss( disp0, dispL, reduction="mean" )
+
+            # Loss for the refinement.
+            rw = 2 * (1 - torch.exp(-torch.abs( dispL - upDisp1 ))) # The refinement loss weight.
+            lossRW = F.smooth_l1_loss( rw*disp0, rw*dispL, reduction="mean" ) # The refinement loss.
             
             loss = \
-                   2 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-                +  2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                   8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
                 +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
-                +  loss0
+                +  loss0 \
+                +  lossRW
 
             # loss = \
             #        2 * F.smooth_l1_loss( upDisp3, dispL2, reduction="mean" ) \

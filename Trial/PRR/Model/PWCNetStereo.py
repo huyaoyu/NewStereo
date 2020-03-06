@@ -252,7 +252,7 @@ class EDRegression(nn.Module):
         # self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
         
         self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
-        self.rg1 = cm.Conv_W( 64, 1, k=3 )
+        self.rg1 = cm.Conv_W( 64, 1, k=3, activation=nn.Tanh() )
 
     def forward(self, x, disp):
         disp = self.dispNorm(disp)
@@ -528,10 +528,10 @@ class PWCNetStereoRes(nn.Module):
         r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
-        disp0 = upDisp1 * ( 1 + 0.1 * dispRe0 )
+        disp0 = upDisp1 + dispRe0 * 192
 
         if ( self.training ):
-            return disp0, disp1, disp2, disp3#, disp4
+            return disp0, disp1, disp2, disp3, upDisp1, dispRe0
         else:
             return disp0, disp1, disp2, disp3, upDisp1, dispRe0
 
@@ -567,12 +567,13 @@ class PWCNetStereoRes(nn.Module):
         upDisp1 = upDisp1 * 2
 
         # ========== Disparity refinement. ==========
-        r10 = self.re1(gray0)
+        # r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
-        disp0 = upDisp1 * ( 1 + 0.1 * dispRe0 )
+        # disp0 = upDisp1 + dispRe0 * 192
 
-        return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
+        # return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
+        return upDisp1, ( dispRe0, disp1, dispRes1 )
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")
