@@ -121,7 +121,7 @@ if __name__ == "__main__":
         if ( args.sobel_x ):
             tt.enable_Sobel_x()
 
-        tt.set_dataset_root_dir( args.data_root_dir, args.data_entries, args.data_file_list )
+        tt.set_dataset_root_dir( args.data_root_dir, args.data_entries, args.data_file_list, args.data_file_list_dir )
         tt.set_read_model( args.read_model )
         tt.set_read_optimizer( args.read_optimizer )
         tt.enable_auto_save( args.auto_save_model )
@@ -151,12 +151,12 @@ if __name__ == "__main__":
         print_delimeter(title = "Initialize.")
         wf.initialize()
 
-        if ( False == args.infer ):
+        if ( not args.infer ):
             # Get the number of test data.
             nTests = len( tt.imgTestLoader )
             wf.logger.info("The size of the test dataset is %s." % ( nTests ))
 
-            if ( False == args.test ):
+            if ( not args.test ):
                 # Create the test data iterator.
                 iterTestData = iter( tt.imgTestLoader )
 
@@ -164,13 +164,18 @@ if __name__ == "__main__":
                 wf.logger.info("Begin training.")
                 print_delimeter(title = "Training loops.")
 
-                testImgL, testImgR, testDispL, testGradL, testGradR = next( iterTestData )
-                wf.test( testImgL, testImgR, testDispL, testGradL, testGradR, 0 )
+                # import ipdb; ipdb.set_trace()
+                # img0, img1, disp0, grad0, grad1 = next( iterTestData )
+
+                dataDictTest = next( iterTestData )
+                wf.test( dataDictTest["img0"], dataDictTest["img1"], dataDictTest["disp0"], \
+                    dataDictTest["grad0"], dataDictTest["grad1"], 0 )
 
                 for i in range(args.train_epochs):
-                    for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTrainLoader ):
+                    for batchIdx, dataDictTrain in enumerate( tt.imgTrainLoader ):
                         
-                        wf.train( imgL, imgR, dispL, gradL, gradR, i )
+                        wf.train( dataDictTrain["img0"], dataDictTrain["img1"], dataDictTrain["disp0"], \
+                            dataDictTrain["grad0"], dataDictTrain["grad1"], i )
 
                         if ( True == tt.flagInspect ):
                             wf.logger.warning("Inspection enabled.")
@@ -180,28 +185,30 @@ if __name__ == "__main__":
                             if ( tt.countTrain % args.test_loops == 0 ):
                                 # Get test data.
                                 try:
-                                    testImgL, testImgR, testDispL, testGradL, testGradR = next( iterTestData )
+                                    dataDictTest = next( iterTestData )
                                 except StopIteration:
                                     iterTestData = iter(tt.imgTestLoader)
-                                    testImgL, testImgR, testDispL, testGradL, testGradR = next( iterTestData )
+                                    dataDictTest = next( iterTestData )
 
                                 # Perform test.
-                                wf.test( testImgL, testImgR, testDispL, testGradL, testGradR, i )
+                                wf.test( dataDictTest["img0"], dataDictTest["img1"], dataDictTest["disp0"], \
+                                    dataDictTest["grad0"], dataDictTest["grad1"], i )
             else:
                 wf.logger.info("Begin testing.")
                 print_delimeter(title="Testing loops.")
 
                 testLossList = []
 
-                for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTestLoader ):
-                    loss, metrics = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
+                for batchIdx, dataDictTest in enumerate( tt.imgTestLoader ):
+                    loss, metrics = wf.test( dataDictTest["img0"], dataDictTest["img1"], dataDictTest["disp0"], \
+                        dataDictTest["grad0"], dataDictTest["grad1"], batchIdx, args.test_flag_save )
 
                     if ( True == tt.flagInspect ):
                         wf.logger.warning("Inspection enabled.")
 
                     wf.logger.info("Test %d, lossTest = %f." % ( batchIdx, loss ))
 
-                    testLossList.append( [ imgL.size()[0], loss, *(np.mean(metrics, axis=0).tolist()) ] )
+                    testLossList.append( [ dataDictTest["img0"].size()[0], loss, *(np.mean(metrics, axis=0).tolist()) ] )
 
                     if ( args.test_loops > 0 and batchIdx >= args.test_loops - 1 ):
                         break
@@ -228,6 +235,8 @@ if __name__ == "__main__":
         else:
             wf.logger.info("Begin inferring.")
             print_delimeter(title="Inferring loops.")
+
+            raise Exception("Not implemented.")
 
             # for batchIdx, ( imgL, imgR, Q ) in enumerate( tt.imgInferLoader ):
             #     startT = time.time()

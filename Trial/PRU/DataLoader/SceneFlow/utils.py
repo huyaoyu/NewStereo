@@ -118,7 +118,7 @@ def write_string_list_2_file(fn, s):
             temp = "%s\n" % (s[i].strip())
             fp.write(temp)
 
-def read_string_list(fn):
+def read_string_list(fn, prefix=""):
     """
     Read a file contains lines of strings. A list will be returned.
     Each element of the list contains a single entry of the input file.
@@ -133,10 +133,75 @@ def read_string_list(fn):
 
         n = len(lines)
 
-        for i in range(n):
-            lines[i] = lines[i].strip()
+        if ( "" == prefix ):
+            for i in range(n):
+                lines[i] = lines[i].strip()
+        else:
+            for i in range(n):
+                lines[i] = "%s/%s" % ( prefix, lines[i].strip() )
 
     return lines
+
+def extract_strings(line, expected, delimiter):
+    ss = line.split(delimiter)
+
+    n = len(ss)
+
+    assert (n == expected ), "{} strings extracted from {} with delimiter {}. Expected to be {}. ".format(n, line, delimiter, expected)
+
+    result = []
+    for s in ss:
+        result.append( s.strip() )
+
+    return result
+
+def read_string_list_2D(fn, expCols, delimiter=",", prefix=""):
+    """
+    fn is the filename.
+    expCols is the expected columns of each line. 
+    delimiter is the separator between strings.
+    If prefix is not empty, then the prefix string will be added to the front of each string.
+    """
+    
+    assert (int(expCols) > 0), "expCols = {}. ".format(expCols)
+    expCols = int(expCols)
+
+    if ( False == os.path.isfile( fn ) ):
+        raise Exception("%s does not exist." % (fn))
+    
+    strings2D = []
+    n = 0
+
+    with open(fn, "r") as fp:
+        lines = fp.read().splitlines()
+
+        n = len(lines)
+
+        if ( "" == prefix ):
+            for i in range(n):
+                line = extract_strings(lines[i].strip(), expCols, delimiter)
+                strings2D.append( line )
+        else:
+            for i in range(n):
+                line = extract_strings(lines[i].strip(), expCols, delimiter)
+
+                for j in range(expCols):
+                    line[j] = "%s/%s" % ( prefix, line[j] )
+
+                strings2D.append( line )
+
+    if ( n == 0 ):
+        raise Exception("Read {} failed. ".format(fn))
+
+    stringCols = []
+    for i in range(expCols):
+        col = []
+        for j in range(n):
+            col.append( strings2D[j][i] )
+
+        stringCols.append(col)
+
+    return stringCols
 
 USAEG_MSG = """
 Generate input files files. 

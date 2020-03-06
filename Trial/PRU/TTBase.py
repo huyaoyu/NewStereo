@@ -15,21 +15,25 @@ from workflow import WorkFlow, TorchFlow
 
 from DataLoader.SceneFlow import Loader as DA
 from DataLoader import PreProcess
-from DataLoader.SceneFlow.utils import list_files_sceneflow_FlyingThings, read_string_list
+from DataLoader.SceneFlow.utils import list_files_sceneflow_FlyingThings, read_string_list_2D
 
 RECOMMENDED_MIN_INTERMITTENT_PLOT_INTERVAL = 100
 
-DATASET_LIST_TRAINING_IMG_L = "InputImageTrainL.txt"
-DATASET_LIST_TRAINING_IMG_R = "InputImageTrainR.txt"
-DATASET_LIST_TRAINING_DSP_L = "InputDisparityTrain.txt"
+# DATASET_LIST_TRAINING_IMG_L = "InputImageTrainL.txt"
+# DATASET_LIST_TRAINING_IMG_R = "InputImageTrainR.txt"
+# DATASET_LIST_TRAINING_DSP_L = "InputDisparityTrain.txt"
 
-DATASET_LIST_TESTING_IMG_L = "InputImageTestL.txt"
-DATASET_LIST_TESTING_IMG_R = "InputImageTestR.txt"
-DATASET_LIST_TESTING_DSP_L = "InputDisparityTest.txt"
+# DATASET_LIST_TESTING_IMG_L = "InputImageTestL.txt"
+# DATASET_LIST_TESTING_IMG_R = "InputImageTestR.txt"
+# DATASET_LIST_TESTING_DSP_L = "InputDisparityTest.txt"
 
-DATASET_LIST_INFERRING_IMG_L = "InputImageInferL.txt"
-DATASET_LIST_INFERRING_IMG_R = "InputImageInferR.txt"
-DATASET_LIST_INFERRING_Q     = "InputQ.txt"
+# DATASET_LIST_INFERRING_IMG_L = "InputImageInferL.txt"
+# DATASET_LIST_INFERRING_IMG_R = "InputImageInferR.txt"
+# DATASET_LIST_INFERRING_Q     = "InputQ.txt"
+
+DATASET_LIST_TRAINING  = "Train.txt"
+DATASET_LIST_TESTING   = "Test.txt"
+DATASET_LIST_INFERRING = "Infer.txt"
 
 class TrainTestBase(object):
     def __init__(self, workingDir, frame=None):
@@ -47,22 +51,23 @@ class TrainTestBase(object):
         self.trainIntervalAccPlot  = 1     # The interval to plot the accumulate values.
         self.flagUseIntPlotter     = False # The flag of intermittent plotter.
 
-        self.imgTrainLoader = None
-        self.imgTestLoader  = None
-        self.imgInferLoader = None
-        self.datasetRootDir = "./"
-        self.dataFileList   = False # Once set to be true, the files contain the list of input dataset will be used.
-        self.dataEntries    = 0 # 0 for using all the data.
-        self.datasetTrain   = None # Should be an object of torch.utils.data.Dataset.
-        self.datasetTest    = None # Should be an object of torch.utils.data.Dataset.
-        self.datasetInfer   = None # Should be an object of torch.utils.data.Dataset.
-        self.dlBatchSize    = 2
-        self.dlShuffle      = True
-        self.dlNumWorkers   = 2
-        self.dlDropLast     = False
-        self.dlResize       = (0, 0) # (0, 0) for disable.
-        self.dlCropTrain    = (0, 0) # (0, 0) for disable.
-        self.dlCropTest     = (0, 0) # (0, 0) for disable.
+        self.imgTrainLoader  = None
+        self.imgTestLoader   = None
+        self.imgInferLoader  = None
+        self.datasetRootDir  = "./"
+        self.dataFileList    = False # Once set to be true, the files contain the list of input dataset will be used.
+        self.dataFileListDir = None # If self.dataFileList is True, then this variable must be set properly.
+        self.dataEntries     = 0 # 0 for using all the data.
+        self.datasetTrain    = None # Should be an object of torch.utils.data.Dataset.
+        self.datasetTest     = None # Should be an object of torch.utils.data.Dataset.
+        self.datasetInfer    = None # Should be an object of torch.utils.data.Dataset.
+        self.dlBatchSize     = 2
+        self.dlShuffle       = True
+        self.dlNumWorkers    = 2
+        self.dlDropLast      = False
+        self.dlResize        = (0, 0) # (0, 0) for disable.
+        self.dlCropTrain     = (0, 0) # (0, 0) for disable.
+        self.dlCropTest      = (0, 0) # (0, 0) for disable.
 
         self.maxDisparity = 64
 
@@ -161,7 +166,7 @@ class TrainTestBase(object):
 
         self.frame.logger.warning("Back to GPU mode.")
 
-    def set_dataset_root_dir(self, d, nEntries=0, flagFileList=False):
+    def set_dataset_root_dir(self, d, nEntries=0, flagFileList=False, fileListDir=None):
         self.check_frame()
 
         if ( False == os.path.isdir(d) ):
@@ -174,10 +179,18 @@ class TrainTestBase(object):
         if ( 0 != nEntries ):
             self.frame.logger.warning("Only %d entries of the training dataset will be used." % ( nEntries ))
 
-        self.dataFileList = flagFileList
+        self.dataFileList    = flagFileList
+        self.dataFileListDir = fileListDir
 
-        if ( True == self.dataFileList ):
+        if ( self.dataFileList ):
+            if ( self.dataFileListDir is None ):
+                raise Exception("The directory of the file-lists files must be set.")
+
+            if ( not os.path.isdir( self.dataFileListDir ) ):
+                raise Exception("File-lists directory %s does not exist. " % ( self.dataFileListDir ))
+
             self.frame.logger.info("Data loader will use the pre-defined files to load the input data.")
+            self.frame.logger.info("The file-list files are saved at %s. " % ( self.dataFileListDir ))
 
     def set_data_loader_params(self, batchSize=2, shuffle=True, numWorkers=2, dropLast=False, \
         cropTrain=(0, 0), cropTest=(0, 0), newSize=(0, 0)):
@@ -266,17 +279,17 @@ class TrainTestBase(object):
         # imgTrainL, imgTrainR, dispTrain, imgTestL, imgTestR, dispTest \
         #     = list_files_sample("/media/yaoyu/DiskE/SceneFlow/Sampler/FlyingThings3D")
 
-        if ( False == self.flagInfer ):
-            if ( True == self.dataFileList ):
-                imgTrainL = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TRAINING_IMG_L )
-                imgTrainR = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TRAINING_IMG_R )
-                dispTrain = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TRAINING_DSP_L )
-                imgTestL  = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TESTING_IMG_L )
-                imgTestR  = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TESTING_IMG_R )
-                dispTest  = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_TESTING_DSP_L )
+        if ( not self.flagInfer ):
+            if ( self.dataFileList ):
+                imgTrainL, imgTrainR, dispTrain = read_string_list_2D( \
+                    self.dataFileListDir + "/" + DATASET_LIST_TRAINING, 3, delimiter=",", prefix=self.datasetRootDir )
+
+                imgTestL, imgTestR, dispTest = read_string_list_2D( \
+                    self.dataFileListDir + "/" + DATASET_LIST_TESTING,  3, delimiter=",", prefix=self.datasetRootDir )
             else:
-                imgTrainL, imgTrainR, dispTrain, imgTestL, imgTestR, dispTest \
-                    = list_files_sceneflow_FlyingThings( self.datasetRootDir )
+                # imgTrainL, imgTrainR, dispTrain, imgTestL, imgTestR, dispTest \
+                #     = list_files_sceneflow_FlyingThings( self.datasetRootDir )
+                raise Exception("Listing files on-the-fly not supported.")
 
             if ( 0 != self.dataEntries ):
                 imgTrainL = imgTrainL[0:self.dataEntries]
@@ -286,12 +299,11 @@ class TrainTestBase(object):
                 imgTestR  = imgTestR[0:self.dataEntries]
                 dispTest  = dispTest[0:self.dataEntries]
         else:
-            if ( True == self.dataFileList ):
-                imgInferL = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_INFERRING_IMG_L )
-                imgInferR = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_INFERRING_IMG_R )
-                Q         = read_string_list( self.datasetRootDir + "/" + DATASET_LIST_INFERRING_Q )
+            if ( self.dataFileList ):
+                imgInferL, imgInferR, Q = read_string_list_2D( \
+                    self.dataFileListDir + "/" + DATASET_LIST_INFERRING, 3, delimiter=",", prefix=self.datasetRootDir )
             else:
-                raise Exception("Please use data file list when inferring.")
+                raise Exception("Listing files on-the-fly not supported.")
             
             if ( 0 != self.dataEntries ):
                 imgInferL = imgInferL[0:self.dataEntries]
@@ -299,52 +311,31 @@ class TrainTestBase(object):
                 Q         = Q[0:self.dataEntries]
 
         # Dataloader.
-        if ( self.dlResize[0] != 0 and self.dlResize[1] != 0 ):
-            if ( self.flagGrayscale ):
-                preprocessor = transforms.Compose( [ \
-                    PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
-                    PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
-                    transforms.ToTensor(), \
-                    PreProcess.SingleChannel() ] )
-            else:
-                preprocessor = transforms.Compose( [ \
-                    PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
-                    PreProcess.NormalizeRGB_OCV(1.0/255), \
-                    transforms.ToTensor() ] )
-
-            preprocessorGrad = transforms.Compose( [ \
-                PreProcess.ResizeNoTensor(self.dlResize[0], self.dlResize[1]), \
-                PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
+        if ( self.flagGrayscale ):
+            preprocessor = transforms.Compose( [ \
+                PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
                 transforms.ToTensor(), \
                 PreProcess.SingleChannel() ] )
-
-            preprocessorDisp = transforms.Compose( [ \
-                PreProcess.ResizeDisparityNoTensor(self.dlResize[0], self.dlResize[1]), \
-                transforms.ToTensor() ] )
         else:
-            if ( self.flagGrayscale ):
-                preprocessor = transforms.Compose( [ \
-                    PreProcess.NormalizeGray_OCV_naive(255, 0.5), \
-                    transforms.ToTensor(), \
-                    PreProcess.SingleChannel() ] )
-            else:
-                preprocessor = transforms.Compose( [ \
-                    PreProcess.NormalizeRGB_OCV(1.0/255), \
-                    transforms.ToTensor() ] )
-            
-            preprocessorGrad = transforms.Compose( [ \
-                PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
-                transforms.ToTensor(), \
-                PreProcess.SingleChannel() ] )
-
-            preprocessorDisp = transforms.Compose( [ \
+            preprocessor = transforms.Compose( [ \
+                PreProcess.NormalizeRGB_OCV(1.0/255), \
                 transforms.ToTensor() ] )
+        
+        preprocessorGrad = transforms.Compose( [ \
+            PreProcess.NormalizeGray_OCV_naive(1020, 0.0), \
+            transforms.ToTensor(), \
+            PreProcess.SingleChannel() ] )
 
-        if ( False == self.flagInfer ):
+        preprocessorDisp = transforms.Compose( [ \
+            transforms.ToTensor() ] )
+
+        if ( not self.flagInfer ):
             self.datasetTrain = DA.myImageFolder( imgTrainL, imgTrainR, dispTrain, True, \
-                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTrain, gNoiseWidth=0 )
+                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, \
+                cropSize=self.dlCropTrain, newSize=self.dlResize, gNoiseWidth=0 )
             self.datasetTest  = DA.myImageFolder( imgTestL,  imgTestR,  dispTest, False, \
-                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, cropSize=self.dlCropTest, gNoiseWidth=0 )
+                preprocessorImg=preprocessor, preprocessorGrad=preprocessorGrad, preprocessorDisp=preprocessorDisp, \
+                cropSize=self.dlCropTest, newSize=self.dlResize, gNoiseWidth=0 )
 
             self.imgTrainLoader = torch.utils.data.DataLoader( \
                 self.datasetTrain, \
@@ -354,7 +345,8 @@ class TrainTestBase(object):
                 self.datasetTest, \
                 batch_size=1, shuffle=False, num_workers=self.dlNumWorkers, drop_last=self.dlDropLast )
         else:
-            self.datasetInfer = DA.inferImageFolder( imgInferL,  imgInferR, Q, preprocessor=preprocessor, cropSize=self.dlCropTest )
+            self.datasetInfer = DA.inferImageFolder( imgInferL,  imgInferR, Q, \
+                preprocessor=preprocessor, cropSize=self.dlCropTest, newSize=self.dlResize )
 
             self.imgInferLoader = torch.utils.data.DataLoader( \
                 self.datasetInfer, \

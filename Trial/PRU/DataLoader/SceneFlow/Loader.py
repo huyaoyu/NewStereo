@@ -103,12 +103,12 @@ class myImageFolder(data.Dataset):
     def __init__(self, left, right, left_disparity, training, \
         loader=cv2_loader, dploader= disparity_loader, \
         preprocessorImg=None, preprocessorGrad=None, preprocessorDisp=None, \
-        cropSize=(0,0), gNoiseWidth=-1):
+        cropSize=(0,0), newSize=(0,0), gNoiseWidth=-1):
  
-        self.left = left
-        self.right = right
-        self.disp_L = left_disparity
-        self.loader = loader
+        self.left     = left
+        self.right    = right
+        self.disp_L   = left_disparity
+        self.loader   = loader
         self.dploader = dploader
         self.training = training
 
@@ -116,6 +116,7 @@ class myImageFolder(data.Dataset):
         self.preprocessorGrad = preprocessorGrad
         self.preprocessorDisp = preprocessorDisp
         self.cropSize = cropSize # (h, w)
+        self.newSize  = newSize # (h, w)
 
         self.dispWhiteNoiseLevel = 0.05
 
@@ -208,6 +209,20 @@ class myImageFolder(data.Dataset):
                img1[ch:ch+self.cropSize[0], cw:cw+self.cropSize[1]], \
                disp[ch:ch+self.cropSize[0], cw:cw+self.cropSize[1]]
     
+    def resize_images_and_disparity(self, img0, img1, disp, newSize):
+        """
+        newSize is in order of (H, W).
+        """
+
+        img0 = cv2.resize(img0, (newSize[1], newSize[0]), interpolation=cv2.INTER_LINEAR)
+        img1 = cv2.resize(img1, (newSize[1], newSize[0]), interpolation=cv2.INTER_LINEAR)
+
+        wOri = disp.shape[1]
+
+        disp = cv2.resize(disp, (newSize[1], newSize[0]), interpolation=cv2.INTER_LINEAR) * (1.0*newSize[1])/wOri
+
+        return img0, img1, disp
+
     def half_size(self, x):
         """
         Assuming x is an OpenCV mat object.
@@ -284,6 +299,11 @@ class myImageFolder(data.Dataset):
                 imgL, imgR, dispL = \
                     self.center_crop_image_and_disparity( imgL, imgR, dispL )
 
+        # Resize.
+        if ( self.newSize[0] != 0 and self.newSize[1] != 0):
+            imgL, imgR, dispL = \
+                self.resize_images_and_disparity( imgL, imgR, dispL, self.newSize )
+
         # Grayscale and gradient.
         if ( self.flagGray ):
             imgL, gradL = convert_2_gray_gradx(imgL)
@@ -303,10 +323,10 @@ class myImageFolder(data.Dataset):
             dispL  = self.preprocessorDisp(dispL)
 
         if ( self.flagGradX ):
-            return imgL, imgR, dispL, gradL, gradR
+            return {"img0": imgL, "img1": imgR, "disp0": dispL, "grad0": gradL, "grad1": gradR}
         else:
-            return imgL, imgR, dispL, \
-                torch.zeros((1), dtype=torch.float), torch.zeros((1), dtype=torch.float)
+            return {"img0": imgL, "img1": imgR, "disp0": dispL, \
+                "grad0": torch.zeros((1), dtype=torch.float), "grad1": torch.zeros((1), dtype=torch.float)}
 
     def __len__(self):
         return len(self.left)
@@ -315,7 +335,7 @@ class myImageFolder(data.Dataset):
 class inferImageFolder(data.Dataset):
     def __init__(self, left, right, Q, \
         loader=cv2_loader, preprocessor=None, \
-        cropSize=(0,0)):
+        cropSize=(0,0), newSize=(0,0)):
  
         self.left   = left
         self.right  = right
@@ -325,78 +345,107 @@ class inferImageFolder(data.Dataset):
         # Modified.
         self.preprocessor  = preprocessor
         self.cropSize      = cropSize
+        self.newSize       = newSize
+
+    def center_crop_images(self, img0, img1, cropSize):
+        """
+        imgp and img1 are assumed to be NumPy arrays with the same shape.
+        And they are assumbed to be OpenCV mat objects, meaning the order of dimensions is
+        height, width, and channel.
+        """
+
+        # Allowed indices.
+        ah = img0.shape[0] - cropSize[0]
+        aw = img1.shape[1] - cropSize[1]
+
+        if ( ah < 0 ):
+            raise Exception("img0.shape[0] < self.cropSize[0]. img0.shape[0] = {}, self.cropSize[0] = {}. ".format( img0.shape[0], cropSize[0] ))
+
+        if ( aw < 0 ):
+            raise Exception("img0.shape[1] < self.cropSize[1]. img0.shape[1] = {}, self.cropSize[1] = {}. ".format( img0.shape[1], cropSize[1] ))
+
+        # Get the center crop.
+        ah = ah + 1
+        aw = aw + 1
+
+        ch = int( ah / 2 )
+        cw = int( aw / 2 )
+
+        return img0[ch:ch+cropSize[0], cw:cw+cropSize[1]], \
+               img1[ch:ch+cropSize[0], cw:cw+cropSize[1]]
+
+    def resize_images(self, img0, img1, newSize):
+        """
+        newSize is in order of (H, W).
+        """
+
+        img0 = cv2.resize(img0, (newSize[1], newSize[0]), interpolation=cv2.INTER_LINEAR)
+        img1 = cv2.resize(img1, (newSize[1], newSize[0]), interpolation=cv2.INTER_LINEAR)
+
+        return img0, img1
 
     def __getitem__(self, index):
         left  = self.left[index]
         right = self.right[index]
 
-        left_img = self.loader(left)
-        right_img = self.loader(right)
+        img0 = self.loader(left)
+        img1 = self.loader(right)
 
-        # w, h = left_img.size
+        if ( self.cropSize[0] > 0 and self.cropSize[1] > 0 ):
+            img0, img1 = self.center_crop_images(img0, img1, self.cropSize)
 
-        w = left_img.shape[1]
-        h = left_img.shape[0]
-
-        if ( self.cropSize[0] <= 0 or self.cropSize[1] <= 0 ):
-            ch, cw = h, w
-        else:
-            ch, cw = self.cropSize[0], self.cropSize[1]
-
-        # left_img  = left_img.crop( (w-cw, h-ch, w, h))
-        # right_img = right_img.crop((w-cw, h-ch, w, h))
-
-        # cv2 compatible crop.
-        left_img  = left_img[ h-ch:h, w-cw:w ]
-        right_img = right_img[ h-ch:h, w-cw:w ]
+        if ( self.newSize[0] > 0 and self.newSize[1] > 0 ):
+            img0, img1 = self.resize_images(img0, img1, self.newSize)
 
         if ( self.preprocessor is not None ):
-            left_img  = self.preprocessor(left_img)
-            right_img = self.preprocessor(right_img)
+            img0 = self.preprocessor(img0)
+            img1 = self.preprocessor(img1)
 
         # Load the Q matrix.
         Q = self.Q[index]
 
-        return left_img, right_img, torch.from_numpy( np.loadtxt( Q, dtype=np.float32 ) )
+        return { "img0": img0, "img1": img1, "Q": torch.from_numpy( np.loadtxt( Q, dtype=np.float32 ) ) }
 
     def __len__(self):
         return len(self.left)
 
 if __name__ == "__main__":
-    import glob
-    import os
+    # import glob
+    # import os
 
-    leftFiles  = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/RGB_cleanpass/left/*.png") )
-    rightFiles = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/RGB_cleanpass/right/*.png") )
-    dispFiles  = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/disparity/*.pfm") )
+    # leftFiles  = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/RGB_cleanpass/left/*.png") )
+    # rightFiles = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/RGB_cleanpass/right/*.png") )
+    # dispFiles  = sorted( glob.glob("/home/yaoyu/temp/SceneFlowSample/FlyingThings3D/disparity/*.pfm") )
 
-    outDir = "/home/yaoyu/temp/NewStereoData/SSS/DataLoader"
+    # outDir = "/home/yaoyu/temp/NewStereoData/SSS/DataLoader"
 
-    # Test the output directory.
-    if ( not os.path.isdir(outDir) ):
-        os.makedirs( outDir )
+    # # Test the output directory.
+    # if ( not os.path.isdir(outDir) ):
+    #     os.makedirs( outDir )
 
-    dl = myImageFolder(leftFiles, rightFiles, dispFiles, training=True, cropSize=(512, 512), gNoiseWidth=0)
+    # dl = myImageFolder(leftFiles, rightFiles, dispFiles, training=True, cropSize=(512, 512), gNoiseWidth=0)
 
-    imgL, imgR, dispL, gradL, gradR = dl[0]
+    # imgL, imgR, dispL, gradL, gradR = dl[0]
 
-    h = imgL.shape[0]
-    w = imgL.shape[1]
+    # h = imgL.shape[0]
+    # w = imgL.shape[1]
 
-    # Convert imgL and imgR to dummy tensors.
-    imgL = torch.from_numpy( imgL.astype(np.float32).reshape((h,w,1)) ).permute((2,0,1))
-    imgR = torch.from_numpy( imgR.astype(np.float32).reshape((h,w,1)) ).permute((2,0,1))
+    # # Convert imgL and imgR to dummy tensors.
+    # imgL = torch.from_numpy( imgL.astype(np.float32).reshape((h,w,1)) ).permute((2,0,1))
+    # imgR = torch.from_numpy( imgR.astype(np.float32).reshape((h,w,1)) ).permute((2,0,1))
 
-    # Convert dispL to dummy tensors.
-    dispL  = torch.from_numpy( dispL.astype(np.float32) )
+    # # Convert dispL to dummy tensors.
+    # dispL  = torch.from_numpy( dispL.astype(np.float32) )
 
-    # Convert gradL and gradR to dummy tensors.
-    gradL = torch.from_numpy( gradL.reshape((h,w,1)) ).permute((2, 0, 1))
-    gradR = torch.from_numpy( gradR.reshape((h,w,1)) ).permute((2, 0, 1))
+    # # Convert gradL and gradR to dummy tensors.
+    # gradL = torch.from_numpy( gradL.reshape((h,w,1)) ).permute((2, 0, 1))
+    # gradR = torch.from_numpy( gradR.reshape((h,w,1)) ).permute((2, 0, 1))
     
-    # Save the data to the file system.
-    TorchTensorUtils.save_tensor_image( "%s/ImgL.png" % (outDir), imgL )
-    TorchTensorUtils.save_tensor_image( "%s/ImgR.png" % (outDir), imgR )
-    TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/dispL.png" % (outDir), dispL )
-    TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/gradL.png" % (outDir), gradL )
-    TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/gradR.png" % (outDir), gradR )
+    # # Save the data to the file system.
+    # TorchTensorUtils.save_tensor_image( "%s/ImgL.png" % (outDir), imgL )
+    # TorchTensorUtils.save_tensor_image( "%s/ImgR.png" % (outDir), imgR )
+    # TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/dispL.png" % (outDir), dispL )
+    # TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/gradL.png" % (outDir), gradL )
+    # TorchTensorUtils.save_tensor_image_single_channel_normalized( "%s/gradR.png" % (outDir), gradR )
+
+    raise Exception("Not implemented.")
