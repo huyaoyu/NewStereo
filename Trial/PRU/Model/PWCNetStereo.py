@@ -533,7 +533,7 @@ class PWCNetStereoRes(nn.Module):
         if ( self.training ):
             return disp0, disp1, disp2, disp3#, disp4
         else:
-            return disp0, disp1, disp2, disp3#, disp4
+            return disp0, disp1, disp2, disp3, upDisp1, dispRe0
 
     def one_shot(self, gray0, gray1, initDisp):
         """

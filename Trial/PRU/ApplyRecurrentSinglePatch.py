@@ -164,9 +164,11 @@ def estimate_initial_disparity(img0, img1, model, initSize):
     stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
     stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
 
+    model.eval()
+
     with torch.no_grad():
         # Forward.
-        disp0, disp1, disp2, disp3 = model(stack0, stack1, torch.zeros((1)), torch.zeros((1)))
+        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = model(stack0, stack1, torch.zeros((1)), torch.zeros((1)))
 
         print("disp0.szie() = {}".format(disp0.size()))
 
@@ -176,8 +178,10 @@ def estimate_initial_disparity(img0, img1, model, initSize):
     # Copy the data to CPU.
     disp0CPU   = convert_cuda_tensor_2_image(disp0)
     upDisp0CPU = convert_cuda_tensor_2_image(upDisp0)
+    upDisp1CPU = convert_cuda_tensor_2_image(upDisp1)
+    dispRe0CPU = convert_cuda_tensor_2_image(dispRe0)
 
-    return upDisp0CPU, disp0CPU
+    return upDisp0CPU, disp0CPU, upDisp1CPU, dispRe0CPU
 
 def save_disp(fnBase, disp, dispMin=0, dispMax=256):
     outFn = "%s.npy" % (fnBase)
@@ -284,7 +288,7 @@ if __name__ == "__main__":
     recModel = RModel(recCom)
 
     # Initial disparity prediction.
-    upInitDisp, initDisp = estimate_initial_disparity( img0, img1, recCom, (initDispH, initDispW) )
+    upInitDisp, initDisp, initDisp1, initDispRe0 = estimate_initial_disparity( img0, img1, recCom, (initDispH, initDispW) )
     
     # Save the initial disparity prediction.
     outFnBase = "%s/UpInitDisp" % (args.outdir)
@@ -292,6 +296,12 @@ if __name__ == "__main__":
 
     outFnBase = "%s/initDisp" % (args.outdir)
     save_disp(outFnBase, initDisp, dispMin=0, dispMax=192)
+
+    outFnBase = "%s/initDisp1" % (args.outdir)
+    save_disp(outFnBase, initDisp1, dispMin=0, dispMax=192)
+
+    outFnBase = "%s/initDispRe0" % (args.outdir)
+    save_disp(outFnBase, initDispRe0, dispMin=0, dispMax=192)
 
     # Original images.
     print("Original images.")

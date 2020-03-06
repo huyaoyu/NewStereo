@@ -483,7 +483,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         with torch.no_grad():
             # Forward.
-            disp0, disp1, disp2, disp3 = self.model(stack0, stack1, gradL, gradR)
+            disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(stack0, stack1, gradL, gradR)
             # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
             # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
