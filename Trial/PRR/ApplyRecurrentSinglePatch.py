@@ -160,15 +160,11 @@ def estimate_initial_disparity(img0, img1, model, initSize):
     t0 = convert_image_2_tensor(rImg0)
     t1 = convert_image_2_tensor(rImg1)
 
-    # Create stacks.
-    stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
-    stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
-
     model.eval()
 
     with torch.no_grad():
         # Forward.
-        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = model(stack0, stack1, torch.zeros((1)), torch.zeros((1)))
+        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = model(t0, t1, torch.zeros((1)), torch.zeros((1)))
 
         print("disp0.szie() = {}".format(disp0.size()))
 

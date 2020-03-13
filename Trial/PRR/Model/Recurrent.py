@@ -10,7 +10,7 @@ import torch.nn.functional as F
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRU/Model")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRR/Model")
     from StereoUtility import WarpByDisparity as WModel
 else:
     from .StereoUtility import WarpByDisparity as WModel

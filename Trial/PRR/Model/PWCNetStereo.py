@@ -25,7 +25,7 @@ import torch.nn.functional as F
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRU/Model")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRR/Model")
     import CommonModel as cm
     from StereoUtility import WarpByDisparity
     from ImageStack import stack_single_channel_tensor
@@ -572,13 +572,14 @@ class PWCNetStereoRes(nn.Module):
         upDisp1 = upDisp1 * 2
 
         # ========== Disparity refinement. ==========
-        # r10 = self.re1(gray0)
+        r10 = self.re1(gray0)
 
         dispRe0 = self.refine( r10, upDisp1 )
         # disp0 = upDisp1 + dispRe0 * 192
+        disp0 = upDisp1 + dispRe0
 
-        # return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
-        return upDisp1, ( dispRe0, disp1, dispRes1 )
+        return disp0, ( dispRe0, disp1, dispRes1, upDisp1 )
+        # return upDisp1, ( dispRe0, disp1, dispRes1 )
 
 if __name__ == "__main__":
     print("Test PWCNetStereo.py")

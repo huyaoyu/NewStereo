@@ -18,7 +18,7 @@ import torchvision.transforms as transforms
 if ( __name__ == "__main__" ):
     import sys
 
-    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/SmallSizeStereo/DataLoader")
+    sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRR/DataLoader")
     import IO
     import PreProcess
     import TorchTensorUtils
