@@ -41,9 +41,6 @@ def stack_single_channel_tensor(img, shift=16, radius=32):
     if ( img.is_cuda ):
         paddedImg = paddedImg.cuda()
 
-    # Copy data from img to paddedImg.
-    paddedImg[:, :, :, padRadius:padRadius+W] = img.detach().clone()
-
     # Create the output tensor.
     C = 2*radius + 1
     out = torch.zeros( (B, C, H, W), dtype=torch.float32 )
@@ -53,6 +50,10 @@ def stack_single_channel_tensor(img, shift=16, radius=32):
 
     if ( img.is_cuda ):
         out = out.cuda()
+
+    # with torch.no_grad():
+    # Copy data from img to paddedImg.
+    paddedImg[:, :, :, padRadius:padRadius+W] = img.clone()
 
     # Copy data to the output tensor.
     for i in range(C):

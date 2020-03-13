@@ -175,8 +175,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 gradR = gradR.cuda()
 
         # Create stacks.
-        stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
-        stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
+        # stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
+        # stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -195,7 +195,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
         self.optimizer.zero_grad()
 
         # Forward.
-        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(stack0, stack1, gradL, gradR)
+        disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(imgL, imgR, gradL, gradR)
         # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
         # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
@@ -209,9 +209,9 @@ class TrainTestPWCNetStereo(TrainTestBase):
         lossRW = F.smooth_l1_loss( rw*disp0, rw*dispL, reduction="mean" ) # The refinement loss.
 
         loss = \
-               8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-            +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-            +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+               8**2 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+            +  4**2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+            +  2**2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
             +  loss0 \
             +  lossRW
 
@@ -468,9 +468,9 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 gradL = gradL.cuda()
                 gradR = gradR.cuda()
 
-        # Create stacks.
-        stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
-        stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
+        # # Create stacks.
+        # stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
+        # stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -488,7 +488,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
         with torch.no_grad():
             # Forward.
-            disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(stack0, stack1, gradL, gradR)
+            disp0, disp1, disp2, disp3, upDisp1, dispRe0 = self.model(imgL, imgR, gradL, gradR)
             # disp0, upDisp1, upDisp2, upDisp3 = self.model(stack0, stack1, gradL, gradR)
 
             # disp5, disp4 = self.model(imgL, imgR, gradL, gradR)
@@ -500,9 +500,9 @@ class TrainTestPWCNetStereo(TrainTestBase):
             lossRW = F.smooth_l1_loss( rw*disp0, rw*dispL, reduction="mean" ) # The refinement loss.
             
             loss = \
-                   8 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
-                +  4 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
-                +  2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
+                   8**2 * F.smooth_l1_loss( disp3, dispL3, reduction="mean" ) \
+                +  4**2 * F.smooth_l1_loss( disp2, dispL2, reduction="mean" ) \
+                +  2**2 * F.smooth_l1_loss( disp1, dispL1, reduction="mean" ) \
                 +  loss0 \
                 +  lossRW
 
@@ -534,7 +534,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
 
             # Apply metrics.
             dispLNP = dispL.squeeze(1).cpu().numpy()
-            mask    = dispLNP <= 128
+            mask    = dispLNP <= 192
             mask    = mask.astype(np.int)
             metrics = metrics_KITTI( dispLNP, disp0.squeeze(1).cpu().numpy(), mask )
 

@@ -28,9 +28,11 @@ if ( __name__ == "__main__" ):
     sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRU/Model")
     import CommonModel as cm
     from StereoUtility import WarpByDisparity
+    from ImageStack import stack_single_channel_tensor
 else:
     from . import CommonModel as cm
     from .StereoUtility import WarpByDisparity
+    from .ImageStack import stack_single_channel_tensor
 
 import Corr2D
 
@@ -252,7 +254,7 @@ class EDRegression(nn.Module):
         # self.bp  = cm.Conv_W( self.encoder0_In, self.decoder0_Out, k=3, activation=cm.SelectedReLU() )
         
         self.rg0 = cm.Conv_W( self.decoder0_Out, 64, k=3, activation=cm.SelectedReLU() )
-        self.rg1 = cm.Conv_W( 64, 1, k=3, activation=nn.Tanh() )
+        self.rg1 = cm.Conv_W( 64, 1, k=3, activation=None )
 
     def forward(self, x, disp):
         disp = self.dispNorm(disp)
@@ -413,9 +415,12 @@ class PWCNetStereoRes(nn.Module):
     def forward(self, gray0, gray1, grad0, grad1):
         B, C, H, W = gray0.size()
         
+        stack0 = stack_single_channel_tensor(gray0, shift=16, radius=32)
+        stack1 = stack_single_channel_tensor(gray1, shift=16, radius=32)
+
         # Feature extraction.
-        f10 = self.fe1(gray0)
-        f11 = self.fe1(gray1)
+        f10 = self.fe1(stack0)
+        f11 = self.fe1(stack1)
         
         f20 = self.fe2(f10)
         f21 = self.fe2(f11)
@@ -525,10 +530,10 @@ class PWCNetStereoRes(nn.Module):
         upDisp1 = upDisp1 * 2
 
         # ========== Disparity refinement. ==========
-        r10 = self.re1(gray0)
+        r10 = self.re1(stack0)
 
         dispRe0 = self.refine( r10, upDisp1 )
-        disp0 = upDisp1 + dispRe0 * 192
+        disp0 = upDisp1 + dispRe0
 
         if ( self.training ):
             return disp0, disp1, disp2, disp3, upDisp1, dispRe0
