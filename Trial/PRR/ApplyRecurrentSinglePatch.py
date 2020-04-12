@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from Model.PWCNetStereo import PWCNetStereoRes as RCom
 from Model.PWCNetStereo import PWCNetStereoParams as RComParams
 from Model.Recurrent import RecurrentModel as RModel
-from Model.ImageStack import stack_single_channel_tensor
+from Model.ImageStack import stack_single_channel_tensor_numpy
 
 from Model.StereoUtility import WarpByDisparity
 
@@ -316,8 +316,8 @@ if __name__ == "__main__":
         t1 = warp(t1, upInitDispTensor)
 
         # Create stacks.
-        stack0 = stack_single_channel_tensor(t0, shift=16, radius=32)
-        stack1 = stack_single_channel_tensor(t1, shift=16, radius=32)
+        stack0 = stack_single_channel_tensor_numpy(t0, shift=16, radius=32)
+        stack1 = stack_single_channel_tensor_numpy(t1, shift=16, radius=32)
 
         # Work on the specified image region.
         disp0, extra = recModel.apply( stack0, stack1, upInitDispTensor, coor, flagWarp=False )

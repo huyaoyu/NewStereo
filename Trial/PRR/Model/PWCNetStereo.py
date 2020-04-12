@@ -28,11 +28,11 @@ if ( __name__ == "__main__" ):
     sys.path.insert(0, "/home/yaoyu/Projects/NewStereo/Trial/PRR/Model")
     import CommonModel as cm
     from StereoUtility import WarpByDisparity
-    from ImageStack import stack_single_channel_tensor
+    from ImageStack import stack_single_channel_tensor_numpy
 else:
     from . import CommonModel as cm
     from .StereoUtility import WarpByDisparity
-    from .ImageStack import stack_single_channel_tensor
+    from .ImageStack import stack_single_channel_tensor_numpy
 
 import Corr2D
 
@@ -415,8 +415,8 @@ class PWCNetStereoRes(nn.Module):
     def forward(self, gray0, gray1, grad0, grad1):
         B, C, H, W = gray0.size()
         
-        stack0 = stack_single_channel_tensor(gray0, shift=16, radius=32)
-        stack1 = stack_single_channel_tensor(gray1, shift=16, radius=32)
+        stack0 = stack_single_channel_tensor_numpy(gray0, shift=16, radius=32)
+        stack1 = stack_single_channel_tensor_numpy(gray1, shift=16, radius=32)
 
         # Feature extraction.
         f10 = self.fe1(stack0)

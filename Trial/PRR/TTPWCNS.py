@@ -14,7 +14,7 @@ from workflow import WorkFlow, TorchFlow
 
 from TTBase import TrainTestBase
 from Model.PWCNetStereo import PWCNetStereoRes, PWCNetStereoParams
-from Model.ImageStack import stack_single_channel_tensor
+from Model.ImageStack import stack_single_channel_tensor_numpy
 
 from Metric.MetricKITTI import apply_metrics as metrics_KITTI
 
@@ -175,8 +175,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 gradR = gradR.cuda()
 
         # Create stacks.
-        # stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
-        # stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
+        # stack0 = stack_single_channel_tensor_numpy(imgL, shift=16, radius=32)
+        # stack1 = stack_single_channel_tensor_numpy(imgR, shift=16, radius=32)
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
@@ -469,8 +469,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
                 gradR = gradR.cuda()
 
         # # Create stacks.
-        # stack0 = stack_single_channel_tensor(imgL, shift=16, radius=32)
-        # stack1 = stack_single_channel_tensor(imgR, shift=16, radius=32)
+        # stack0 = stack_single_channel_tensor_numpy(imgL, shift=16, radius=32)
+        # stack1 = stack_single_channel_tensor_numpy(imgR, shift=16, radius=32)
 
         # Create a set of true data with various scales.
         B, C, H, W = imgL.size()
