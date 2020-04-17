@@ -30,3 +30,6 @@ Trial/PRU/LocalRunApplyRecurrentSinglePatch.sh
 Trial/PRR/WD/
 Trial/PRR/LocalRunApplyRecurrent.sh
 Trial/PRR/LocalRunApplyRecurrentSinglePatch.sh
+Trial/OPT/WD/
+Trial/OPT/LocalRunApplyRecurrent.sh
+Trial/OPT/LocalRunApplyRecurrentSinglePatch.sh
