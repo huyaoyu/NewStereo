@@ -416,11 +416,11 @@ class PWCNetStereo(nn.Module):
         #     # else:
         #     #     raise Exception("Unexpected module type {}.".format(type(m)))
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
-                if m.bias is not None:
-                    m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        #         nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
+        #         if m.bias is not None:
+        #             m.bias.data.zero_()
 
     def forward(self, gray0, gray1, grad0, grad1):
         B, C, H, W = gray0.size()
@@ -634,11 +634,11 @@ class PWCNetStereoRes(nn.Module):
         #     # else:
         #     #     raise Exception("Unexpected module type {}.".format(type(m)))
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
-                if m.bias is not None:
-                    m.bias.data.zero_()
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        #         nn.init.kaiming_normal_(m.weight.data, mode='fan_in')
+        #         if m.bias is not None:
+        #             m.bias.data.zero_()
 
     def forward(self, gray0, gray1, grad0, grad1):
         B, C, H, W = gray0.size()
