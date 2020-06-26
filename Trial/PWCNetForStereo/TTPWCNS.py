@@ -132,6 +132,10 @@ class TrainTestPWCNetStereo(TrainTestBase):
     # def post_init_model(self):
     #     raise Exception("Not implemented.")
 
+    def update_learning_rate(self):
+        for pg in self.optimizer.param_groups:
+            pg["lr"] = self.learningRate
+
     # Overload parent's function.
     def init_optimizer(self):
         # self.optimizer = optim.Adam( self.model.parameters(), lr=0.001, betas=(0.9, 0.999) )
@@ -149,7 +153,8 @@ class TrainTestPWCNetStereo(TrainTestBase):
             if ( not os.path.isfile( optFn ) ):
                 raise Exception("Optimizer file (%s) does not exist. " % ( optFn ))
 
-            self.optimizer = self.frame.load_optimizer(self.optimizer, optFn)
+            self.frame.load_optimizer(self.optimizer, optFn)
+            self.update_learning_rate()
 
             self.frame.logger.info("Optimizer state loaded for file %s. " % (optFn))
 
