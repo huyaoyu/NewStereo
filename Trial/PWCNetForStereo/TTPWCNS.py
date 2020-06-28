@@ -503,7 +503,7 @@ class TrainTestPWCNetStereo(TrainTestBase):
             # Apply metrics.
             dispLNP = dispL.squeeze(1).cpu().numpy()
             mask    = dispLNP <= 128
-            mask    = mask.astype(np.int)
+            # mask    = mask.astype(np.int)
             metrics = metrics_KITTI( dispLNP, disp0.squeeze(1).cpu().numpy(), mask )
 
         self.countTest += 1

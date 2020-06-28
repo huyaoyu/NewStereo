@@ -81,6 +81,10 @@ class MyWF(TorchFlow.TorchFlow):
 
         self.logger.info("Finalized.")
 
+def get_average_epe_by_pixel_number(testMetricList):
+    allEPE = testMetricList[:, 5] * testMetricList[:, 6]
+    return allEPE.sum() / testMetricList[:, 6].sum()
+
 if __name__ == "__main__":
     print("Hello NG.")
 
@@ -192,6 +196,7 @@ if __name__ == "__main__":
                 print_delimeter(title="Testing loops.")
 
                 testLossList = []
+                testMetricList = np.array([], dtype=np.float32).reshape((0, 7)) 
 
                 for batchIdx, ( imgL, imgR, dispL, gradL, gradR ) in enumerate( tt.imgTestLoader ):
                     loss, metrics = wf.test( imgL, imgR, dispL, gradL, gradR, batchIdx, args.test_flag_save )
@@ -202,6 +207,8 @@ if __name__ == "__main__":
                     wf.logger.info("Test %d, lossTest = %f." % ( batchIdx, loss ))
 
                     testLossList.append( [ imgL.size()[0], loss, *(np.mean(metrics, axis=0).tolist()) ] )
+
+                    testMetricList = np.vstack((testMetricList, metrics))
 
                     if ( args.test_loops > 0 and batchIdx >= args.test_loops - 1 ):
                         break
@@ -222,9 +229,15 @@ if __name__ == "__main__":
                 wf.logger.info("Average 5-pixel error rate = %f." % ( averagedLossAndMetrics[5] ))
                 wf.logger.info("Average end point error = %f." % ( averagedLossAndMetrics[6] ))
 
+                # The EPE calculated by revealing the pixel numbers.
+                avgEPEByPixelNumber = get_average_epe_by_pixel_number(testMetricList)
+                wf.logger.info("Average end point error by pixel number = %f. " % ( avgEPEByPixelNumber ))
+
                 # Save the loss values to file the working directory.
                 testResultSummaryFn = wf.compose_file_name("BatchTest", "dat", subFolder=tt.testResultSubfolder)
                 np.savetxt( testResultSummaryFn, testLossList)
+                testMetricListFn = wf.compose_file_name("BatchTestMetrics", "dat", subFolder=tt.testResultSubfolder)
+                np.savetxt( testMetricListFn, testMetricList )
         else:
             wf.logger.info("Begin inferring.")
             print_delimeter(title="Inferring loops.")
