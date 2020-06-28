@@ -352,7 +352,7 @@ class TrainTestBase(object):
 
             self.imgTestLoader = torch.utils.data.DataLoader( \
                 self.datasetTest, \
-                batch_size=1, shuffle=False, num_workers=self.dlNumWorkers, drop_last=self.dlDropLast )
+                batch_size=self.dlBatchSize, shuffle=False, num_workers=self.dlNumWorkers, drop_last=self.dlDropLast )
         else:
             self.datasetInfer = DA.inferImageFolder( imgInferL,  imgInferR, Q, preprocessor=preprocessor, cropSize=self.dlCropTest )
 
